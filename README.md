@@ -1,0 +1,2 @@
+# Description
+A Library written in C for multithreaded asset-based rendering with spatial coordinates using the CPU. Planned optimizations and features include batch processing, delta rendering, and parallel processing.
