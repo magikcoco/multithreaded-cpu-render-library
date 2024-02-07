@@ -6,4 +6,5 @@
 !LICENSE
 !src/
 !include/
+!tests/
 !Makefile
