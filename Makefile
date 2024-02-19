@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-I/usr/include/X11 -L/usr/lib/X11 -lX11
+CFLAGS=-I/usr/include/X11 -L/usr/lib/X11 -lX11 -lpng
 SRCDIR=src
 BUILDDIR=build
 TARGET=$(BUILDDIR)/main
