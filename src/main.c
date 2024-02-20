@@ -3,37 +3,62 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
-XImage *load_png(Display *display, char *filepath) {
-    FILE *fp = fopen(filepath, "rb");
-    if (!fp) {
+bool initialize_png_reader(const char *filepath, FILE **fp, png_structp *png_ptr, png_infop *info_ptr) {
+    // Open the file
+    *fp = fopen(filepath, "rb");
+
+    // Check if the file was successfully opened
+    if (!*fp) {
         perror("Error opening file");
-        return NULL;
+        return false;
     }
 
-    png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (!png) {
+    // Initialize libpng read structure
+    *png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+
+    // Check if the read struct was created successfully
+    if (!*png_ptr) {
         perror("Error creating png read struct");
-        fclose(fp);
-        return NULL;
+        fclose(*fp);
+        return false;
     }
 
-    png_infop info = png_create_info_struct(png);
-    if (!info) {
+    // Create PNG info struct
+    *info_ptr = png_create_info_struct(*png_ptr);
+
+    // Check if the PNG info struct was created successfully
+    if (!*info_ptr) {
         perror("Error creating png info struct");
-        png_destroy_read_struct(&png, NULL, NULL);
-        fclose(fp);
-        return NULL;
+        png_destroy_read_struct(png_ptr, NULL, NULL);
+        fclose(*fp);
+        return false;
     }
 
-    if (setjmp(png_jmpbuf(png))) {
-        perror("Something went wrong");
-        png_destroy_read_struct(&png, &info, NULL);
-        fclose(fp);
-        return NULL;
+    // Setup setjmp for handling libpng errors, if an error occurs in a libpng function after this it will jump back here
+    if (setjmp(png_jmpbuf(*png_ptr))) {
+        perror("Error during png init_io");
+        png_destroy_read_struct(png_ptr, info_ptr, NULL);
+        fclose(*fp);
+        return false;
     }
 
-    png_init_io(png, fp);
+    // Initializes the I/O for the libpng file reading process using the previously opened file.
+    png_init_io(*png_ptr, *fp);
+    return true;
+}
+
+XImage *load_png_from_file(Display *display, char *filepath) {
+    //TODO: refactor more
+    FILE *fp;
+    png_structp png;
+    png_infop info;
+
+    if (!initialize_png_reader(filepath, &fp, &png, &info)) {
+        return NULL; // Initialization failed, return early
+    }
+
     png_read_info(png, info);
 
     //FIXME: some images have a blue hue
@@ -103,6 +128,10 @@ XImage *load_png(Display *display, char *filepath) {
 }
 
 int main() {
+    //TODO: move window code to a seperate library
+    //TODO: resizable image
+    //TODO: image is always fullscreen or fit to its largest dimension
+
     XEvent event;
     Display* d = XOpenDisplay(NULL);
     int x = 50;
@@ -119,7 +148,7 @@ int main() {
     XSetWMProtocols(d, w, &wmDelete, 1);
 
     // Load the PNG image
-    XImage* image = load_png(d, "resources/test_image.png");
+    XImage* image = load_png_from_file(d, "resources/test_image.png");
 
     // Event loop
     for(;;){
@@ -133,8 +162,8 @@ int main() {
             if(image != NULL) {
                 int src_x = 0;
                 int src_y = 0;
-                int dest_x = 100;
-                int dest_y = 50;
+                int dest_x = 0;
+                int dest_y = 0;
                 XPutImage(d, w, DefaultGC(d, 0), image, src_x, src_y, dest_x, dest_y, image->width, image->height);
             }
         }
@@ -142,6 +171,7 @@ int main() {
 
     // Cleanup and exit
     if(image != NULL) {
+        //FIXME: throws an implicit declaration of function warning
         XDestroyImage(image); // Free memory asscociated with the image
     }
     XCloseDisplay(d); // Close Display
