@@ -88,6 +88,16 @@ void apply_color_transformations(png_structp png, png_infop info) {
     }
 }
 
+png_bytep *read_png_data(png_structp png, png_infop info, int height) {
+    png_bytep *row_pointers = (png_bytep*)malloc(sizeof(png_bytep) * height);
+    for(int y = 0; y < height; y++) {
+        row_pointers[y] = (png_byte*)malloc(png_get_rowbytes(png, info));
+    }
+
+    png_read_image(png, row_pointers);
+    return row_pointers;
+}
+
 XImage *load_png_from_file(Display *display, char *filepath) {
     //TODO: refactor more
     FILE *fp;
@@ -105,13 +115,8 @@ XImage *load_png_from_file(Display *display, char *filepath) {
     png_read_update_info(png, info);
 
     int height = png_get_image_height(png, info);
-    png_bytep *row_pointers = (png_bytep*)malloc(sizeof(png_bytep) * height);
+    png_bytep *row_pointers = read_png_data(png, info, height);
 
-    for(int y = 0; y < height; y++) {
-        row_pointers[y] = (png_byte*)malloc(png_get_rowbytes(png,info));
-    }
-
-    png_read_image(png, row_pointers);
     fclose(fp);
 
     // Allocate memory for the entire image
