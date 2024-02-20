@@ -98,6 +98,18 @@ png_bytep *read_png_data(png_structp png, png_infop info, int height) {
     return row_pointers;
 }
 
+png_bytep create_contiguous_image_data(png_structp png, png_infop info, png_bytep *row_pointers, int height) {
+    // Allocate memory for the entire image
+    png_bytep img_data = (png_bytep)malloc(height * png_get_rowbytes(png, info));
+
+    for (int y = 0; y < height; y++) {
+        memcpy(img_data + y * png_get_rowbytes(png, info), row_pointers[y], png_get_rowbytes(png, info));
+        free(row_pointers[y]);
+    }
+
+    return img_data;
+}
+
 XImage *load_png_from_file(Display *display, char *filepath) {
     //TODO: refactor more
     FILE *fp;
@@ -119,14 +131,8 @@ XImage *load_png_from_file(Display *display, char *filepath) {
 
     fclose(fp);
 
-    // Allocate memory for the entire image
-    png_bytep img_data = (png_bytep)malloc(height * png_get_rowbytes(png, info));
+    png_bytep img_data = create_contiguous_image_data(png, info, row_pointers, height);
 
-    // Copy row data into the contiguous block
-    for (int y = 0; y < height; y++) {
-        memcpy(img_data + y * png_get_rowbytes(png, info), row_pointers[y], png_get_rowbytes(png, info));
-        free(row_pointers[y]); // Free each row pointer after copying
-    }
     free(row_pointers); // Free the row pointers array
 
     // Create the XImage using the contiguous block
