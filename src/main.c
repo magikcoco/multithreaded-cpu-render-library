@@ -49,18 +49,7 @@ bool initialize_png_reader(const char *filepath, FILE **fp, png_structp *png_ptr
     return true;
 }
 
-XImage *load_png_from_file(Display *display, char *filepath) {
-    //TODO: refactor more
-    FILE *fp;
-    png_structp png;
-    png_infop info;
-
-    if (!initialize_png_reader(filepath, &fp, &png, &info)) {
-        return NULL; // Initialization failed, return early
-    }
-
-    png_read_info(png, info);
-
+void apply_color_transformations(png_structp png, png_infop info) {
     //FIXME: some images have a blue hue
     //Check that color type and bit depth handling are done correctly
     //Check that all color types are handled correctly
@@ -68,8 +57,6 @@ XImage *load_png_from_file(Display *display, char *filepath) {
     //Byte order (RGBA vs BGRA) could be causing the blue tint
     //Add handling for gamma correction
     //Check memory allocation
-    int width = png_get_image_width(png, info);
-    int height = png_get_image_height(png, info);
     png_byte color_type = png_get_color_type(png, info);
     png_byte bit_depth = png_get_bit_depth(png, info);
 
@@ -99,10 +86,27 @@ XImage *load_png_from_file(Display *display, char *filepath) {
         color_type == PNG_COLOR_TYPE_GRAY_ALPHA) {
         png_set_gray_to_rgb(png);
     }
+}
+
+XImage *load_png_from_file(Display *display, char *filepath) {
+    //TODO: refactor more
+    FILE *fp;
+    png_structp png;
+    png_infop info;
+
+    if (!initialize_png_reader(filepath, &fp, &png, &info)) {
+        return NULL; // Initialization failed, return early
+    }
+
+    png_read_info(png, info);
+    
+    apply_color_transformations(png, info);
 
     png_read_update_info(png, info);
 
+    int height = png_get_image_height(png, info);
     png_bytep *row_pointers = (png_bytep*)malloc(sizeof(png_bytep) * height);
+
     for(int y = 0; y < height; y++) {
         row_pointers[y] = (png_byte*)malloc(png_get_rowbytes(png,info));
     }
@@ -122,7 +126,7 @@ XImage *load_png_from_file(Display *display, char *filepath) {
 
     // Create the XImage using the contiguous block
     Visual *visual = DefaultVisual(display, 0);
-    XImage *img = XCreateImage(display, visual, DefaultDepth(display, 0), ZPixmap, 0, (char*)img_data, width, height, 32, 0);
+    XImage *img = XCreateImage(display, visual, DefaultDepth(display, 0), ZPixmap, 0, (char*)img_data, png_get_image_width(png, info), height, 32, 0);
 
     return img;
 }
