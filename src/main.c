@@ -6,6 +6,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// Define the rgba_color structure
+typedef struct {
+    png_byte red, green, blue, alpha;
+} rgba_color;
+
 bool initialize_png_reader(const char *filepath, FILE **fp, png_structp *png_ptr, png_infop *info_ptr) {
     // Open the file
     *fp = fopen(filepath, "rb");
@@ -51,7 +56,6 @@ bool initialize_png_reader(const char *filepath, FILE **fp, png_structp *png_ptr
 }
 
 void apply_color_transformations(png_structp png, png_infop info) {
-    //FIXME: transparancy does not work
     png_byte color_type = png_get_color_type(png, info);
     png_byte bit_depth = png_get_bit_depth(png, info);
 
@@ -71,7 +75,7 @@ void apply_color_transformations(png_structp png, png_infop info) {
         png_set_tRNS_to_alpha(png);
     }
 
-    if ((color_type == PNG_COLOR_TYPE_RGB || color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_PALETTE) && !(color_type == PNG_COLOR_TYPE_RGBA)) {
+    if ((color_type == PNG_COLOR_TYPE_RGB || color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_PALETTE) && !(color_type & PNG_COLOR_MASK_ALPHA)) {
         png_set_filler(png, 0xFF, PNG_FILLER_AFTER);
     }
 
@@ -130,6 +134,22 @@ void swap_byte_order(png_bytep row, int width) {
     }
 }
 
+void blend_with_background(png_bytep img_data, int width, int height, rgba_color background_color) {
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            png_bytep pixel = &img_data[(y * width + x) * 4]; // 4 bytes per pixel (RGBA)
+
+            // Alpha blending formula: new_color = alpha * foreground_color + (1 - alpha) * background_color
+            double alpha = pixel[3] / 255.0; // Normalize alpha to [0, 1]
+            pixel[0] = (png_byte)(alpha * pixel[0] + (1 - alpha) * background_color.red);
+            pixel[1] = (png_byte)(alpha * pixel[1] + (1 - alpha) * background_color.green);
+            pixel[2] = (png_byte)(alpha * pixel[2] + (1 - alpha) * background_color.blue);
+            // Optionally, set the alpha to full opacity
+            pixel[3] = 0xFF;
+        }
+    }
+}
+
 XImage *load_png_from_file(Display *display, char *filepath) {
     FILE *fp;
     png_structp png;
@@ -160,6 +180,10 @@ XImage *load_png_from_file(Display *display, char *filepath) {
 
     png_bytep img_data = create_contiguous_image_data(png, info, row_pointers, height);
 
+    // Perform alpha blending with the background color
+    rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF}; // Example: white background
+    blend_with_background(img_data, width, height, background_color);
+
     free(row_pointers); // Free the row pointers array
 
     // Create the XImage using the contiguous block
@@ -189,7 +213,7 @@ int main() {
     XSetWMProtocols(d, w, &wmDelete, 1);
 
     // Load the PNG image
-    XImage* image = load_png_from_file(d, "resources/test_image4.png");
+    XImage* image = load_png_from_file(d, "resources/test_image2.png");
 
     // Event loop
     for(;;){
