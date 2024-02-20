@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 bool initialize_png_reader(const char *filepath, FILE **fp, png_structp *png_ptr, png_infop *info_ptr) {
     // Open the file
@@ -50,13 +51,7 @@ bool initialize_png_reader(const char *filepath, FILE **fp, png_structp *png_ptr
 }
 
 void apply_color_transformations(png_structp png, png_infop info) {
-    //FIXME: some images have a blue hue
-    //Check that color type and bit depth handling are done correctly
-    //Check that all color types are handled correctly
-    //Check the alpha channel handling
-    //Byte order (RGBA vs BGRA) could be causing the blue tint
-    //Add handling for gamma correction
-    //Check memory allocation
+    //FIXME: transparancy does not work
     png_byte color_type = png_get_color_type(png, info);
     png_byte bit_depth = png_get_bit_depth(png, info);
 
@@ -76,14 +71,11 @@ void apply_color_transformations(png_structp png, png_infop info) {
         png_set_tRNS_to_alpha(png);
     }
 
-    if (color_type == PNG_COLOR_TYPE_RGB ||
-        color_type == PNG_COLOR_TYPE_GRAY ||
-        color_type == PNG_COLOR_TYPE_PALETTE) {
+    if ((color_type == PNG_COLOR_TYPE_RGB || color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_PALETTE) && !(color_type == PNG_COLOR_TYPE_RGBA)) {
         png_set_filler(png, 0xFF, PNG_FILLER_AFTER);
     }
 
-    if (color_type == PNG_COLOR_TYPE_GRAY ||
-        color_type == PNG_COLOR_TYPE_GRAY_ALPHA) {
+    if (color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_GRAY_ALPHA) {
         png_set_gray_to_rgb(png);
     }
 }
@@ -115,8 +107,30 @@ XImage *create_ximage_from_data(Display *display, png_bytep img_data, int width,
     return XCreateImage(display, visual, DefaultDepth(display, 0), ZPixmap, 0, (char*)img_data, width, height, 32, 0);
 }
 
+int is_big_endian(void) {
+    union {
+        uint32_t i;
+        char c[4];
+    } bint = {0x01020304};
+
+    return bint.c[0] == 1; 
+}
+
+int system_byte_order_differs_from_png(void) {
+    return !is_big_endian(); // Returns 1 if system is little-endian, 0 if big-endian
+}
+
+void swap_byte_order(png_bytep row, int width) {
+    for (int x = 0; x < width; x++) {
+        png_bytep pixel = &row[x * 4]; // 4 bytes per pixel (RGBA)
+        png_byte temp = pixel[0];
+        pixel[0] = pixel[2];
+        pixel[2] = temp;
+        // Alpha channel (pixel[3]) remains unchanged
+    }
+}
+
 XImage *load_png_from_file(Display *display, char *filepath) {
-    //TODO: refactor more
     FILE *fp;
     png_structp png;
     png_infop info;
@@ -132,7 +146,15 @@ XImage *load_png_from_file(Display *display, char *filepath) {
     png_read_update_info(png, info);
 
     int height = png_get_image_height(png, info);
+    int width = png_get_image_width(png, info);
     png_bytep *row_pointers = read_png_data(png, info, height);
+
+    // Perform byte order swapping if necessary
+    if (system_byte_order_differs_from_png()) {
+        for (int y = 0; y < height; y++) {
+            swap_byte_order(row_pointers[y], width);
+        }
+    }
 
     fclose(fp);
 
@@ -141,7 +163,7 @@ XImage *load_png_from_file(Display *display, char *filepath) {
     free(row_pointers); // Free the row pointers array
 
     // Create the XImage using the contiguous block
-    XImage *img = create_ximage_from_data(display, img_data, png_get_image_width(png, info), height);
+    XImage *img = create_ximage_from_data(display, img_data, width, height);
 
     return img;
 }
@@ -167,7 +189,7 @@ int main() {
     XSetWMProtocols(d, w, &wmDelete, 1);
 
     // Load the PNG image
-    XImage* image = load_png_from_file(d, "resources/test_image.png");
+    XImage* image = load_png_from_file(d, "resources/test_image4.png");
 
     // Event loop
     for(;;){
