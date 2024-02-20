@@ -110,6 +110,11 @@ png_bytep create_contiguous_image_data(png_structp png, png_infop info, png_byte
     return img_data;
 }
 
+XImage *create_ximage_from_data(Display *display, png_bytep img_data, int width, int height) {
+    Visual *visual = DefaultVisual(display, 0);
+    return XCreateImage(display, visual, DefaultDepth(display, 0), ZPixmap, 0, (char*)img_data, width, height, 32, 0);
+}
+
 XImage *load_png_from_file(Display *display, char *filepath) {
     //TODO: refactor more
     FILE *fp;
@@ -136,8 +141,7 @@ XImage *load_png_from_file(Display *display, char *filepath) {
     free(row_pointers); // Free the row pointers array
 
     // Create the XImage using the contiguous block
-    Visual *visual = DefaultVisual(display, 0);
-    XImage *img = XCreateImage(display, visual, DefaultDepth(display, 0), ZPixmap, 0, (char*)img_data, png_get_image_width(png, info), height, 32, 0);
+    XImage *img = create_ximage_from_data(display, img_data, png_get_image_width(png, info), height);
 
     return img;
 }
