@@ -11,6 +11,12 @@ typedef struct {
     png_byte red, green, blue, alpha;
 } rgba_color;
 
+typedef struct {
+    png_bytep data;
+    size_t size;
+    size_t current_pos;
+} memory_reader_state;
+
 bool initialize_png_reader(const char *filepath, FILE **fp, png_structp *png_ptr, png_infop *info_ptr) {
     // Open the file
     *fp = fopen(filepath, "rb");
@@ -177,6 +183,68 @@ XImage *load_png_from_file(Display *display, char *filepath) {
     }
 
     fclose(fp);
+
+    png_bytep img_data = create_contiguous_image_data(png, info, row_pointers, height);
+
+    // Perform alpha blending with the background color
+    rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF}; // Example: white background
+    blend_with_background(img_data, width, height, background_color);
+
+    free(row_pointers); // Free the row pointers array
+
+    // Create the XImage using the contiguous block
+    XImage *img = create_ximage_from_data(display, img_data, width, height);
+
+    return img;
+}
+
+void png_read_from_memory(png_structp png_ptr, png_bytep outBytes, png_size_t byteCountToRead) {
+    memory_reader_state* state = (memory_reader_state*)png_get_io_ptr(png_ptr);
+    if (state->current_pos + byteCountToRead <= state->size) {
+        memcpy(outBytes, state->data + state->current_pos, byteCountToRead);
+        state->current_pos += byteCountToRead;
+    } else {
+        png_error(png_ptr, "Read error in png_read_from_memory (not enough data)");
+    }
+}
+
+XImage *load_png_from_memory(Display *display, png_bytep memory, size_t memory_size) {
+    png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png) {
+        // Handle error...
+        return NULL;
+    }
+
+    png_infop info = png_create_info_struct(png);
+    if (!info) {
+        // Handle error...
+        png_destroy_read_struct(&png, NULL, NULL);
+        return NULL;
+    }
+
+    if (setjmp(png_jmpbuf(png))) {
+        // Handle error...
+        png_destroy_read_struct(&png, &info, NULL);
+        return NULL;
+    }
+
+    memory_reader_state state = {memory, memory_size, 0};
+    png_set_read_fn(png, &state, png_read_from_memory);
+
+    png_read_info(png, info);
+    apply_color_transformations(png, info);
+    png_read_update_info(png, info);
+
+    int height = png_get_image_height(png, info);
+    int width = png_get_image_width(png, info);
+    png_bytep *row_pointers = read_png_data(png, info, height);
+
+    // Perform byte order swapping if necessary
+    if (system_byte_order_differs_from_png()) {
+        for (int y = 0; y < height; y++) {
+            swap_byte_order(row_pointers[y], width);
+        }
+    }
 
     png_bytep img_data = create_contiguous_image_data(png, info, row_pointers, height);
 
