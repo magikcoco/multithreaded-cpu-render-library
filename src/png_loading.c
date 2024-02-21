@@ -1,11 +1,11 @@
-#include "png_loading.h"
 #include <png.h>
+#include <stdbool.h> // bool type in function signatures
+#include <stdint.h> // uint32_t in the is_big_endian function
+#include <stdio.h> // fopen, fclose, perror
+#include <stdlib.h> // malloc, free
+#include <string.h> // memcpy
 #include <X11/Xlib.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
+#include "png_loading.h"
 
 // Define the rgba_color structure
 typedef struct {

@@ -1,8 +1,8 @@
 #ifndef X11_DISPLAY_H
 #define X11_DISPLAY_H
 
-#include <X11/Xlib.h>
 #include <stdlib.h>
+#include <X11/Xlib.h>
 
 // Forward declarations of types used in the functions
 typedef unsigned char png_byte;
