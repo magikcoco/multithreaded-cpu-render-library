@@ -1,5 +1,6 @@
 #include <X11/Xatom.h> //Atom handling for close event
 #include <X11/Xlib.h> // X window functions
+#include "logo.h"
 #include "png_loading.h"
 #include "windowing.h"
 
@@ -16,9 +17,10 @@ void start_window_loop(int x, int y, int width, int height, int border_width) {
     Atom wmDelete = XInternAtom(d, "WM_DELETE_WINDOW", True);
     XSetWMProtocols(d, w, &wmDelete, 1);
 
-    XImage* image = load_png_from_file(d, "resources/test_image4.png"); // Assume this function exists
-
+    //XImage* image = load_png_from_file(d, "resources/nagato.png");
+    XImage* image = load_png_from_memory(d, resources_nagato_png, resources_nagato_png_len);
     XEvent event;
+
     // Event loop
     for (;;) {
         XNextEvent(d, &event);
