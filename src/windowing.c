@@ -1,3 +1,5 @@
+#include <stdbool.h>
+#include <stdio.h>
 #include <X11/Xatom.h> //Atom handling for close event
 #include <X11/Xlib.h> // X window functions
 #include <X11/Xutil.h> // XDestroyImage
@@ -5,6 +7,27 @@
 #include "png_loading.h"
 #include "scaling.h"
 #include "windowing.h"
+
+//TODO: image is updatable, function must trigger expose events
+//TODO: event handlers for key presses, other triggers
+//TODO: retrieve mouse position
+
+bool use_nn = false;
+bool use_bli = false;
+
+void set_scaling_nn(){
+    use_nn = true;
+    use_bli = false;
+}
+
+void set_scaling_bli(){
+    use_nn = false;
+    use_bli = true;
+}
+
+void set_scaling_defaults(){
+    set_scaling_bli();
+}
 
 void get_window_size(Display* display, Window window, int* width, int* height) {
     XWindowAttributes attributes;
@@ -15,9 +38,6 @@ void get_window_size(Display* display, Window window, int* width, int* height) {
 }
 
 void start_window_loop(int x, int y, int width, int height, int border_width) {
-    //TODO: image is always fullscreen or fit to its largest dimension
-    //TODO: image is updatable
-    //TODO: resizable window
     Display* d = XOpenDisplay(NULL);
     Window w = XCreateSimpleWindow(d, DefaultRootWindow(d), x, y, width, height, border_width, BlackPixel(d, 0), WhitePixel(d, 0));
     XMapWindow(d, w); // Maps the window on the screen
@@ -58,9 +78,16 @@ void start_window_loop(int x, int y, int width, int height, int border_width) {
                 }
 
                 // Scale the image
-                //TODO: implement additional options, nearest neighbor causes artifacts
-                //XImage* scaled_image = nearest_neighbor_scale(d, w, image, new_width, new_height);
-                XImage* scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
+                XImage* scaled_image;
+                if(use_nn){
+                    scaled_image = nearest_neighbor_scale(d, w, image, new_width, new_height);
+                } else if(use_bli){
+                    scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
+                } else {
+                    perror("No scaling method set");
+                    set_scaling_defaults();
+                    scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
+                }
 
                 // Calculate the position to center the image
                 // From this point the width and the height will be set to their actual value

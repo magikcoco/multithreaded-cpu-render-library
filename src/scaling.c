@@ -3,6 +3,10 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h> // XGetPixel, XPutPixel
 
+//TODO: Bicubic interpolation
+//TODO: Lanczos Resampling
+//TODO: Box Sampling
+
 XImage* nearest_neighbor_scale(Display* display, Window window, XImage* orig, int new_width, int new_height) {
     int x_ratio = (int)((orig->width << 16) / new_width) + 1;
     int y_ratio = (int)((orig->height << 16) / new_height) + 1;
@@ -10,7 +14,6 @@ XImage* nearest_neighbor_scale(Display* display, Window window, XImage* orig, in
     int x2, y2;
     Visual *visual = DefaultVisual(display, 0);
     XImage* scaled = XCreateImage(display, visual, orig->depth, ZPixmap, 0, malloc(new_width * new_height * 4), new_width, new_height, 32, 0);
-    //XImage* scaled = XCreateImage(display, visual, DefaultDepth(display, 0), ZPixmap, 0, (char*)img_data, width, height, 32, 0);
     for (int i = 0; i < new_height; i++) {
         for (int j = 0; j < new_width; j++) {
             x2 = ((j * x_ratio) >> 16);
