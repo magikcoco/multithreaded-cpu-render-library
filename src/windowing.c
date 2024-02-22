@@ -1,28 +1,10 @@
 #include <X11/Xatom.h> //Atom handling for close event
 #include <X11/Xlib.h> // X window functions
+#include <X11/Xutil.h> // XDestroyImage
 #include "logo.h"
 #include "png_loading.h"
+#include "scaling.h"
 #include "windowing.h"
-
-XImage* nearest_neighbor_scale(Display* display, Window window, XImage* orig, int new_width, int new_height) {
-    int x_ratio = (int)((orig->width << 16) / new_width) + 1;
-    int y_ratio = (int)((orig->height << 16) / new_height) + 1;
-
-    int x2, y2;
-    Visual *visual = DefaultVisual(display, 0);
-    XImage* scaled = XCreateImage(display, visual, orig->depth, ZPixmap, 0, malloc(new_width * new_height * 4), new_width, new_height, 32, 0);
-    //XImage* scaled = XCreateImage(display, visual, DefaultDepth(display, 0), ZPixmap, 0, (char*)img_data, width, height, 32, 0);
-    for (int i = 0; i < new_height; i++) {
-        for (int j = 0; j < new_width; j++) {
-            x2 = ((j * x_ratio) >> 16);
-            y2 = ((i * y_ratio) >> 16);
-            unsigned long pixel = XGetPixel(orig, x2, y2);
-            XPutPixel(scaled, j, i, pixel);
-        }
-    }
-
-    return scaled;
-}
 
 void get_window_size(Display* display, Window window, int* width, int* height) {
     XWindowAttributes attributes;
@@ -77,7 +59,8 @@ void start_window_loop(int x, int y, int width, int height, int border_width) {
 
                 // Scale the image
                 //TODO: implement additional options, nearest neighbor causes artifacts
-                XImage* scaled_image = nearest_neighbor_scale(d, w, image, new_width, new_height);
+                //XImage* scaled_image = nearest_neighbor_scale(d, w, image, new_width, new_height);
+                XImage* scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
 
                 // Calculate the position to center the image
                 // From this point the width and the height will be set to their actual value
@@ -85,13 +68,15 @@ void start_window_loop(int x, int y, int width, int height, int border_width) {
                 int y_pos = (height - scaled_image->height) / 2;
 
                 XPutImage(d, w, DefaultGC(d, 0), scaled_image, 0, 0, x_pos, y_pos, scaled_image->width, scaled_image->height);
+
+                // Destroy the scaled image
+                XDestroyImage(scaled_image);
             }
         }
     }
 
     // Cleanup
     if (image != NULL) {
-        //FIXME: warning about implicit declaration
         XDestroyImage(image); // Free memory associated with the image
     }
     XCloseDisplay(d); // Close the display
