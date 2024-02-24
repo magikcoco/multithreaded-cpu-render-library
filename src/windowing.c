@@ -12,6 +12,14 @@
 //TODO: event handlers for key presses, other triggers
 //TODO: retrieve mouse position
 
+//defaults for window
+int x = 50;
+int y = 50;
+int width = 250;
+int height = 250;
+int border_width = 1;
+
+//scaling bools
 bool use_nn = false;
 bool use_bli = false;
 
@@ -29,6 +37,14 @@ void set_scaling_defaults(){
     set_scaling_bli();
 }
 
+void set_window_parameters(int set_x, int set_y, int set_width, int set_height, int set_border_width){
+    x = set_x;
+    y = set_y;
+    width = set_width;
+    height = set_height;
+    border_width = set_border_width;
+}
+
 void get_window_size(Display* display, Window window, int* width, int* height) {
     XWindowAttributes attributes;
     XGetWindowAttributes(display, window, &attributes);
@@ -37,7 +53,7 @@ void get_window_size(Display* display, Window window, int* width, int* height) {
     *height = attributes.height;
 }
 
-void start_window_loop(int x, int y, int width, int height, int border_width) {
+void start_window_loop() {
     Display* d = XOpenDisplay(NULL);
     Window w = XCreateSimpleWindow(d, DefaultRootWindow(d), x, y, width, height, border_width, BlackPixel(d, 0), WhitePixel(d, 0));
     XMapWindow(d, w); // Maps the window on the screen

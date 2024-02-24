@@ -7,6 +7,8 @@ int main() {
     int width = 250;
     int height = 250;
     int border_width = 1;
-    start_window_loop(x, y, width, height, border_width);
+    //Optional, these are the defaults
+    set_window_parameters(x, y, width, height, border_width);
+    start_window_loop();
     return 0;
 }
