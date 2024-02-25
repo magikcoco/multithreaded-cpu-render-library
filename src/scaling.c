@@ -1,8 +1,8 @@
 #include <math.h>
 #include <stdlib.h>
-#include <stdio.h>
+#include <stdio.h> // perror
 #include <X11/Xlib.h>
-#include <X11/Xutil.h> // XGetPixel, XPutPixel
+#include <X11/Xutil.h> // XDestroyImage
 
 //TODO: Bicubic interpolation
 //TODO: Lanczos Resampling

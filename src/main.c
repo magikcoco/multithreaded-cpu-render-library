@@ -9,6 +9,6 @@ int main() {
     int border_width = 1;
     //Optional, these are the defaults
     set_window_parameters(x, y, width, height, border_width);
-    start_window_loop();
+    start_gui();
     return 0;
 }

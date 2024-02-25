@@ -1,3 +1,6 @@
+#include <pthread.h>
+#include <signal.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <X11/Xatom.h> //Atom handling for close event
@@ -19,30 +22,52 @@ int width = 250;
 int height = 250;
 int border_width = 1;
 
+//image variables
+XImage* image;
+
 //scaling bools
 bool use_nn = false;
 bool use_bli = false;
 
+//shutdown bool
+atomic_bool shutdown_flag = false;
+
+//multithreading variables
+pthread_t thread_id;
+pthread_mutex_t scaling_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t win_param_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t image_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void termination_handler(){
+    atomic_store(&shutdown_flag, true);
+}
+
+void shutdown(){
+    raise(SIGTERM);
+}
+
 void set_scaling_nn(){
+    pthread_mutex_lock(&scaling_lock);
     use_nn = true;
     use_bli = false;
+    pthread_mutex_unlock(&scaling_lock);
 }
 
 void set_scaling_bli(){
+    pthread_mutex_lock(&scaling_lock);
     use_nn = false;
     use_bli = true;
-}
-
-void set_scaling_defaults(){
-    set_scaling_bli();
+    pthread_mutex_unlock(&scaling_lock);
 }
 
 void set_window_parameters(int set_x, int set_y, int set_width, int set_height, int set_border_width){
+    pthread_mutex_lock(&win_param_lock);
     x = set_x;
     y = set_y;
     width = set_width;
     height = set_height;
     border_width = set_border_width;
+    pthread_mutex_unlock(&win_param_lock);
 }
 
 void get_window_size(Display* display, Window window, int* width, int* height) {
@@ -55,7 +80,9 @@ void get_window_size(Display* display, Window window, int* width, int* height) {
 
 void start_window_loop() {
     Display* d = XOpenDisplay(NULL);
+    pthread_mutex_lock(&win_param_lock);
     Window w = XCreateSimpleWindow(d, DefaultRootWindow(d), x, y, width, height, border_width, BlackPixel(d, 0), WhitePixel(d, 0));
+    pthread_mutex_unlock(&win_param_lock);
     XMapWindow(d, w); // Maps the window on the screen
     XSelectInput(d, w, ExposureMask | StructureNotifyMask);
 
@@ -64,18 +91,21 @@ void start_window_loop() {
     XSetWMProtocols(d, w, &wmDelete, 1);
 
     //XImage* image = load_png_from_file(d, "resources/nagato.png");
-    XImage* image = load_png_from_memory(d, resources_nagato_png, resources_nagato_png_len);
+    pthread_mutex_lock(&image_lock);
+    image = load_png_from_memory(d, resources_nagato_png, resources_nagato_png_len);
+    pthread_mutex_unlock(&image_lock);
     XEvent event;
 
     // Event loop
-    for (;;) {
+    while (!atomic_load(&shutdown_flag)) {
         XNextEvent(d, &event);
 
         if (event.type == ClientMessage && (Atom)event.xclient.data.l[0] == wmDelete) {
-            break; // Exit the loop on window close event
+            raise(SIGTERM);
         } else if (event.type == Expose) {
             // Handle Expose event
             if (image != NULL) {
+                pthread_mutex_lock(&win_param_lock);
                 get_window_size(d, w, &width, &height);
 
                 double img_aspect = (double)image->width / image->height;
@@ -95,20 +125,31 @@ void start_window_loop() {
 
                 // Scale the image
                 XImage* scaled_image;
+                bool set_default_scaling = false;
+                pthread_mutex_lock(&scaling_lock);
+                pthread_mutex_lock(&image_lock);
                 if(use_nn){
                     scaled_image = nearest_neighbor_scale(d, w, image, new_width, new_height);
                 } else if(use_bli){
                     scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
                 } else {
                     perror("No scaling method set");
-                    set_scaling_defaults();
+                    set_default_scaling = true;
                     scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
+                }
+                pthread_mutex_unlock(&scaling_lock);
+                pthread_mutex_unlock(&image_lock);
+
+                //this must be here or there will be a deadlock with aquiring the scaling lock
+                if(set_default_scaling) {
+                    set_scaling_bli();
                 }
 
                 // Calculate the position to center the image
                 // From this point the width and the height will be set to their actual value
                 int x_pos = (width - scaled_image->width) / 2;
                 int y_pos = (height - scaled_image->height) / 2;
+                pthread_mutex_unlock(&win_param_lock);
 
                 XPutImage(d, w, DefaultGC(d, 0), scaled_image, 0, 0, x_pos, y_pos, scaled_image->width, scaled_image->height);
 
@@ -119,8 +160,36 @@ void start_window_loop() {
     }
 
     // Cleanup
+    pthread_mutex_lock(&image_lock);
     if (image != NULL) {
         XDestroyImage(image); // Free memory associated with the image
     }
+    pthread_mutex_unlock(&image_lock);
+
     XCloseDisplay(d); // Close the display
+}
+
+void* start_gui_thread(void* arg){
+    //wrapper to meet function signature requirements of pthread
+    start_window_loop();
+    return NULL;
+}
+
+void start_gui() {
+    XInitThreads();
+
+    signal(SIGTERM, termination_handler);
+
+    int err = pthread_create(&thread_id, NULL, start_gui_thread, NULL);
+    if (err != 0) {
+        perror("Failed to create GUI thread");
+        exit(err);
+    }
+
+    // Wait for the GUI thread to finish
+    err = pthread_join(thread_id, NULL);
+    if (err != 0) {
+        perror("Failed to join GUI thread");
+        exit(err);
+    }
 }
