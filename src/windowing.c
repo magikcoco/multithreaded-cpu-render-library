@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <X11/Xatom.h> //Atom handling for close event
+#include <X11/keysym.h> //Key handlers
 #include <X11/Xlib.h> // X window functions
 #include <X11/Xutil.h> // XDestroyImage
 #include "logo.h"
@@ -11,9 +12,11 @@
 #include "scaling.h"
 #include "windowing.h"
 
+//TODO: change window parameters while gui is operating
 //TODO: image is updatable, function must trigger expose events
-//TODO: event handlers for key presses, other triggers
 //TODO: retrieve mouse position
+
+#define MAX_KEYS 256
 
 //defaults for window
 int x = 50;
@@ -21,6 +24,9 @@ int y = 50;
 int width = 250;
 int height = 250;
 int border_width = 1;
+
+// Array to store handlers for each key
+KeyHandler key_handlers[MAX_KEYS];
 
 //image variables
 XImage* image;
@@ -37,6 +43,7 @@ pthread_t thread_id;
 pthread_mutex_t scaling_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t win_param_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t image_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t key_handlers_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void termination_handler(){
     atomic_store(&shutdown_flag, true);
@@ -78,13 +85,29 @@ void get_window_size(Display* display, Window window, int* width, int* height) {
     *height = attributes.height;
 }
 
+void handle_key_event(KeyHandler handler, KeyMap key) {
+    pthread_mutex_lock(&key_handlers_lock);
+    if (key < MAX_KEYS) {
+        key_handlers[key] = handler;
+    }
+    pthread_mutex_unlock(&key_handlers_lock);
+}
+
+void remove_key_handler(KeyMap key) {
+    pthread_mutex_lock(&key_handlers_lock);
+    if (key < MAX_KEYS) {
+        key_handlers[key] = NULL;
+    }
+    pthread_mutex_unlock(&key_handlers_lock);
+}
+
 void start_window_loop() {
     Display* d = XOpenDisplay(NULL);
     pthread_mutex_lock(&win_param_lock);
     Window w = XCreateSimpleWindow(d, DefaultRootWindow(d), x, y, width, height, border_width, BlackPixel(d, 0), WhitePixel(d, 0));
     pthread_mutex_unlock(&win_param_lock);
     XMapWindow(d, w); // Maps the window on the screen
-    XSelectInput(d, w, ExposureMask | StructureNotifyMask);
+    XSelectInput(d, w, ExposureMask | StructureNotifyMask | KeyPressMask); // Include KeyPressMask
 
     // Handle window close event
     Atom wmDelete = XInternAtom(d, "WM_DELETE_WINDOW", True);
@@ -156,6 +179,14 @@ void start_window_loop() {
                 // Destroy the scaled image
                 XDestroyImage(scaled_image);
             }
+        } else if (event.type == KeyPress) {
+            //TODO: worker threads
+            KeySym key = XLookupKeysym(&event.xkey, 0);
+            pthread_mutex_lock(&key_handlers_lock);
+            if (key < MAX_KEYS && key_handlers[key]) {
+                key_handlers[key]();  // Call the handler
+            }
+            pthread_mutex_unlock(&key_handlers_lock);
         }
     }
 
@@ -185,11 +216,26 @@ void start_gui() {
         perror("Failed to create GUI thread");
         exit(err);
     }
+    /*
+    // Detach the GUI thread
+    err = pthread_detach(thread_id);
+    if (err != 0) {
+        perror("Failed to detach GUI thread");
+        // Attempt to recover: signal the GUI thread to shutdown
+        shutdown();
 
-    // Wait for the GUI thread to finish
+        // Wait for the GUI thread to finish
+        err = pthread_join(thread_id, NULL);
+        if (err != 0) {
+            perror("Failed to join GUI thread after failed detach");
+            exit(err);
+        }
+    }
+    */
+    //TODO: switch to the above when there is something else for the main thread to do
     err = pthread_join(thread_id, NULL);
     if (err != 0) {
-        perror("Failed to join GUI thread");
+        perror("Failed to join GUI thread after failed detach");
         exit(err);
     }
 }
