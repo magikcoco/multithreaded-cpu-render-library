@@ -1,29 +1,23 @@
 CC=gcc
-CFLAGS=-I./include -I/usr/include/X11 -L/usr/lib/X11 -lX11 -lpng -lm -Wall -Wunused
+CFLAGS=-I./include -I/usr/include/X11 -L/usr/lib/X11 -Wall -Wunused
+LDFLAGS=-lX11 -lpng -lm
 SRCDIR=src
 BUILDDIR=build
-TARGET=$(BUILDDIR)/main
-OBJFILES=$(BUILDDIR)/main.o $(BUILDDIR)/png_loading.o $(BUILDDIR)/windowing.o $(BUILDDIR)/scaling.o
+LIB_TARGET=$(BUILDDIR)/libnagato.a  # Static library
+TEST_TARGET=$(BUILDDIR)/test_executable  # Testing executable
+LIB_OBJFILES=$(BUILDDIR)/png_loading.o $(BUILDDIR)/windowing.o $(BUILDDIR)/scaling.o  # Library object files
+TEST_OBJFILES=$(BUILDDIR)/main.o  # Test executable object files
 
-all: $(TARGET)
+all: $(LIB_TARGET) $(TEST_TARGET)
 
-$(TARGET): $(OBJFILES)
+$(LIB_TARGET): $(LIB_OBJFILES)
 	mkdir -p $(BUILDDIR)
-	$(CC) $(CFLAGS) $^ -o $@
+	ar rcs $@ $^
 
-$(BUILDDIR)/main.o: $(SRCDIR)/main.c
-	mkdir -p $(BUILDDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(TEST_TARGET): $(TEST_OBJFILES) $(LIB_TARGET)
+	$(CC) $(TEST_OBJFILES) -o $@ -L$(BUILDDIR) -lnagato $(CFLAGS) $(LDFLAGS)
 
-$(BUILDDIR)/png_loading.o: $(SRCDIR)/png_loading.c
-	mkdir -p $(BUILDDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILDDIR)/windowing.o: $(SRCDIR)/windowing.c
-	mkdir -p $(BUILDDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILDDIR)/scaling.o: $(SRCDIR)/scaling.c
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c
 	mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 

@@ -1,7 +1,5 @@
 #include <stdio.h>
-#include "key_constants.h" // Custom key constants
-#include "png_loading.h"
-#include "windowing.h"
+#include "nagato.h"
 
 void example_handler() {
     printf("test\n");
