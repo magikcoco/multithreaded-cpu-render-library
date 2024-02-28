@@ -1,8 +1,7 @@
-#include <stdio.h>
 #include "nagato.h"
 
-void example_handler() {
-    printf("test\n");
+void space_handler() {
+    update_image_from_file("./resources/test.png"); 
 }
 
 int main() {
@@ -14,7 +13,7 @@ int main() {
     //Optional, these are the defaults
     set_window_parameters(x, y, width, height, border_width);
 
-    handle_key_event(example_handler, Space);
+    handle_key_event(space_handler, Space);
 
     start_gui();
     return 0;
