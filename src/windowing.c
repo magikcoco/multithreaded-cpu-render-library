@@ -25,6 +25,10 @@ int width = 250;
 int height = 250;
 int border_width = 1;
 
+//other globals
+Display* d;
+Window w;
+
 // Array to store handlers for each key
 KeyHandler key_handlers[MAX_KEYS];
 
@@ -102,9 +106,9 @@ void remove_key_handler(KeyMap key) {
 }
 
 void start_window_loop() {
-    Display* d = XOpenDisplay(NULL);
+    d = XOpenDisplay(NULL);
     pthread_mutex_lock(&win_param_lock);
-    Window w = XCreateSimpleWindow(d, DefaultRootWindow(d), x, y, width, height, border_width, BlackPixel(d, 0), WhitePixel(d, 0));
+    w = XCreateSimpleWindow(d, DefaultRootWindow(d), x, y, width, height, border_width, BlackPixel(d, 0), WhitePixel(d, 0));
     pthread_mutex_unlock(&win_param_lock);
     XMapWindow(d, w); // Maps the window on the screen
     XSelectInput(d, w, ExposureMask | StructureNotifyMask | KeyPressMask); // Include KeyPressMask
