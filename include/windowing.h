@@ -1,7 +1,7 @@
 #ifndef WINDOWING_H
 #define WINDOWING_H
 
-#include "key_constants.h" // Custom key constants
+#include <stdbool.h>
 
 // Define KeyHandler as a function pointer type
 typedef void (*KeyHandler)(void);
@@ -11,6 +11,9 @@ typedef unsigned int KeyMap;
 
 // Function declaration
 void shutdown();
+void update_image_from_file(char *filepath);
+bool get_scaling_nn();
+bool get_scaling_bli();
 void set_scaling_nn();
 void set_scaling_bli();
 void handle_key_event(KeyHandler handler, KeyMap key);

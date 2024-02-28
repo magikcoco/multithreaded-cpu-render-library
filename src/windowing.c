@@ -1,14 +1,16 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
-#include <stdbool.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <X11/Xatom.h> //Atom handling for close event
 #include <X11/keysym.h> //Key handlers
 #include <X11/Xlib.h> // X window functions
 #include <X11/Xutil.h> // XDestroyImage
 #include "logo.h"
-#include "png_loading.h"
+#include "compositing.h"
+#include "png_image.h"
 #include "scaling.h"
 #include "windowing.h"
 
@@ -33,7 +35,8 @@ Window w;
 KeyHandler key_handlers[MAX_KEYS];
 
 //image variables
-XImage* image;
+//XImage* image;
+PNG_Image* image;
 
 //scaling bools
 bool use_nn = false;
@@ -55,6 +58,42 @@ void termination_handler(){
 
 void shutdown(){
     raise(SIGTERM);
+}
+
+void update_image_from_file(char *filepath){
+    pthread_mutex_lock(&image_lock);
+    image = png_load_from_file(filepath);
+    rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF}; // White
+    blend_with_background(image->data, image->width, image->height, background_color);
+    pthread_mutex_unlock(&image_lock);
+
+    XEvent event;
+    memset(&event, 0, sizeof(event));
+    event.type = Expose;
+    event.xexpose.window = w;
+    event.xexpose.count = 0; // Set to 0 to indicate this is the last expose event
+
+    // Send the Expose event to the window
+    XSendEvent(d, w, False, ExposureMask, &event);
+
+    // Flush the output buffer and wait until all requests have been received and processed by the X server
+    XFlush(d);
+}
+
+bool get_scaling_nn(){
+    bool ret_bool = false;
+    pthread_mutex_lock(&scaling_lock);
+    if(use_nn) ret_bool = true;
+    pthread_mutex_unlock(&scaling_lock);
+    return ret_bool;
+}
+
+bool get_scaling_bli(){
+    bool ret_bool = false;
+    pthread_mutex_lock(&scaling_lock);
+    if(use_bli) ret_bool = true;
+    pthread_mutex_unlock(&scaling_lock);
+    return ret_bool;
 }
 
 void set_scaling_nn(){
@@ -105,6 +144,34 @@ void remove_key_handler(KeyMap key) {
     pthread_mutex_unlock(&key_handlers_lock);
 }
 
+XImage* png_image_to_ximage(int screen, PNG_Image* p) {
+    if (!d || !p) return NULL;
+
+    // Determine the depth of the default screen of the display
+    int depth = DefaultDepth(d, screen);
+
+    // Create an XImage
+    // Assuming 4 bytes per pixel (RGBA)
+    XImage* image = XCreateImage(d, DefaultVisual(d, screen), depth, ZPixmap, 0, (char*)malloc(p->width * p->height * 4), p->width, p->height, 32, 0);
+    if (!image) return NULL;
+
+    // Copy image data from UniversalImage to XImage
+    for (int y = 0; y < p->height; y++) {
+        for (int x = 0; x < p->width; x++) {
+            unsigned long pixel = 0;
+            int idx = (y * p->width + x) * 4; // 4 bytes per pixel (RGBA)
+            // Assuming the display uses 24 or 32 bits per pixel in BGRX format
+            pixel |= p->data[idx + 2]; // Blue
+            pixel |= p->data[idx + 1] << 8; // Green
+            pixel |= p->data[idx] << 16; // Red
+            // Note: XImage does not use the alpha component
+            XPutPixel(image, x, y, pixel);
+        }
+    }
+
+    return image;
+}
+
 void start_window_loop() {
     d = XOpenDisplay(NULL);
     pthread_mutex_lock(&win_param_lock);
@@ -117,9 +184,10 @@ void start_window_loop() {
     Atom wmDelete = XInternAtom(d, "WM_DELETE_WINDOW", True);
     XSetWMProtocols(d, w, &wmDelete, 1);
 
-    //XImage* image = load_png_from_file(d, "resources/nagato.png");
     pthread_mutex_lock(&image_lock);
-    image = load_png_from_memory(d, resources_nagato_png, resources_nagato_png_len);
+    image = png_load_from_memory(resources_nagato_png, resources_nagato_png_len);
+    rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF}; // White
+    blend_with_background(image->data, image->width, image->height, background_color);
     pthread_mutex_unlock(&image_lock);
     XEvent event;
 
@@ -156,13 +224,14 @@ void start_window_loop() {
                 pthread_mutex_lock(&scaling_lock);
                 pthread_mutex_lock(&image_lock);
                 if(use_nn){
-                    scaled_image = nearest_neighbor_scale(d, w, image, new_width, new_height);
+                    scaled_image = png_image_to_ximage(0, nearest_neighbor_scale(image, new_width, new_height));
                 } else if(use_bli){
-                    scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
+                    scaled_image = png_image_to_ximage(0, bilinear_interpolation_scale(image, new_width, new_height));
                 } else {
                     perror("No scaling method set");
                     set_default_scaling = true;
-                    scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
+                    //scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
+                    scaled_image = png_image_to_ximage(0, bilinear_interpolation_scale(image, new_width, new_height));
                 }
                 pthread_mutex_unlock(&scaling_lock);
                 pthread_mutex_unlock(&image_lock);
@@ -197,7 +266,7 @@ void start_window_loop() {
     // Cleanup
     pthread_mutex_lock(&image_lock);
     if (image != NULL) {
-        XDestroyImage(image); // Free memory associated with the image
+        DestroyPNG_Image(image); // Free memory associated with the image
     }
     pthread_mutex_unlock(&image_lock);
 
