@@ -299,14 +299,19 @@ void start_window_loop() {
                 pthread_mutex_lock(&scaling_lock); //get the scaling lock
                 pthread_mutex_lock(&image_lock); //get the image lock
                 if(use_nn){
-                    scaled_image = png_image_to_ximage(nearest_neighbor_scale(image, new_width, new_height));
+                    PNG_Image* temp = nearest_neighbor_scale(image, new_width, new_height);
+                    scaled_image = png_image_to_ximage(temp);
+                    DestroyPNG_Image(&temp);
                 } else if(use_bli){
-                    scaled_image = png_image_to_ximage(bilinear_interpolation_scale(image, new_width, new_height));
+                    PNG_Image* temp = bilinear_interpolation_scale(image, new_width, new_height);
+                    scaled_image = png_image_to_ximage(temp);
+                    DestroyPNG_Image(&temp);
                 } else {
                     perror("No scaling method set");
                     set_default_scaling = true;
-                    //scaled_image = bilinear_interpolation_scale(d, w, image, new_width, new_height);
-                    scaled_image = png_image_to_ximage(bilinear_interpolation_scale(image, new_width, new_height));
+                    PNG_Image* temp = bilinear_interpolation_scale(image, new_width, new_height);
+                    scaled_image = png_image_to_ximage(temp);
+                    DestroyPNG_Image(&temp);
                 }
                 pthread_mutex_unlock(&scaling_lock); //release scaling lock
                 pthread_mutex_unlock(&image_lock); //release image lock
