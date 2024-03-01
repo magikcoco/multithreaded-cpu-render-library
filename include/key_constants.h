@@ -25,7 +25,7 @@
 #define Pause XK_Pause
 
 //row 2
-#define grave XK_grave
+#define Grave XK_grave
 #define K_0 XK_0
 #define K_1 XK_1
 #define K_2 XK_2
@@ -36,8 +36,8 @@
 #define K_7 XK_7
 #define K_8 XK_8
 #define K_9 XK_9
-#define minus XK_minus
-#define equal XK_equal
+#define Minus XK_minus
+#define Equal XK_equal
 #define BackSpace XK_BackSpace
 
 #define Insert XK_Insert
@@ -56,9 +56,9 @@
 #define K_i XK_i
 #define K_o XK_o
 #define K_p XK_p
-#define bracketleft XK_bracketleft
-#define bracketright XK_bracketright
-#define backslash XK_backslash
+#define Bracketleft XK_bracketleft
+#define Bracketright XK_bracketright
+#define Backslash XK_backslash
 
 #define Delete XK_Delete
 #define End XK_End
@@ -75,8 +75,8 @@
 #define K_j XK_j
 #define K_k XK_k
 #define K_l XK_l
-#define semicolon XK_semicolon
-#define apostrophe XK_apostrophe
+#define Semicolon XK_semicolon
+#define Apostrophe XK_apostrophe
 #define Return XK_Return
 
 //row 5
@@ -88,9 +88,9 @@
 #define K_b XK_b
 #define K_n XK_n
 #define K_m XK_m
-#define comma XK_comma
-#define period XK_period
-#define slash XK_slash
+#define Comma XK_comma
+#define Period XK_period
+#define Slash XK_slash
 #define Shift_R XK_Shift_R
 #define Up XK_Up
 
