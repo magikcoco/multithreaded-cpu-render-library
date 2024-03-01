@@ -1,7 +1,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h> // perror
-#include "png_image.h"
+#include "scaling.h"
 
 //TODO: Bicubic interpolation
 //TODO: Lanczos Resampling

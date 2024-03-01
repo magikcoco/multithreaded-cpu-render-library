@@ -6,7 +6,7 @@ SRCDIR=src
 BUILDDIR=build
 LIB_TARGET=$(BUILDDIR)/libnagato.a  # Static library
 TEST_TARGET=$(BUILDDIR)/test_executable  # Testing executable
-LIB_OBJFILES=$(BUILDDIR)/windowing.o $(BUILDDIR)/scaling.o $(BUILDDIR)/png_image.o $(BUILDDIR)/compositing.o # Library object files
+LIB_OBJFILES=$(BUILDDIR)/windowing.o $(BUILDDIR)/scaling.o $(BUILDDIR)/png_image.o $(BUILDDIR)/compositing.o $(BUILDDIR)/logo.o # Library object files
 TEST_OBJFILES=$(BUILDDIR)/main.o  # Test executable object files
 
 all: $(LIB_TARGET) $(TEST_TARGET)

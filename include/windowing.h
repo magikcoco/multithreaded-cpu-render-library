@@ -2,6 +2,7 @@
 #define WINDOWING_H
 
 #include <stdbool.h>
+#include "png_image.h"
 
 // Define KeyHandler as a function pointer type
 typedef void (*KeyHandler)(void);
@@ -9,11 +10,15 @@ typedef void (*KeyHandler)(void);
 // Define KeyCode as an alias for unsigned int
 typedef unsigned int KeyMap;
 
-// Function declaration
 /*
  * raises a signal for termination request
  */
 void shutdown();
+
+/*
+ * updates the image displayed in the window using an existing PNG_Image in memory
+ */
+void update_image_from_memory(PNG_Image* newImage);
 
 /*
  * updates the image displayed in the window using a filepath

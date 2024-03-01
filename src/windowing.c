@@ -8,9 +8,8 @@
 #include <X11/keysym.h> //Key handlers
 #include <X11/Xlib.h> // X window functions
 #include <X11/Xutil.h> // XDestroyImage
-#include "logo.h"
 #include "compositing.h"
-#include "png_image.h"
+#include "logo.h"
 #include "scaling.h"
 #include "windowing.h"
 
@@ -65,7 +64,47 @@ void termination_handler(){
 void shutdown(){
     raise(SIGTERM);
 }
-//TODO: update image from memory
+
+/*
+ * updates the image displayed in the window using an existing PNG_Image in memory
+ */
+void update_image_from_memory(PNG_Image* newImage) {
+    // Lock a mutex before updating the global image to prevent concurrent access
+    pthread_mutex_lock(&image_lock);
+
+    // Check if the newImage is valid
+    if (newImage != NULL) {
+        // Free the previous image if it exists to prevent memory leaks
+        if (image != NULL) {
+            DestroyPNG_Image(&image); // Assuming DestroyPNG_Image properly frees the PNG_Image and its data
+        }
+
+        // Update the global image with the new image
+        image = newImage;
+
+        //TODO: make this global and changable
+        // Define a white background color.
+        rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF}; // White
+        // Blend the new image with the white background color
+        blend_with_background(image->data, image->width, image->height, background_color);
+    }
+
+    // Unlock the mutex after the image has been updated
+    pthread_mutex_unlock(&image_lock);
+
+    // Initialize an XEvent structure for triggering a redraw
+    XEvent event;
+    memset(&event, 0, sizeof(event)); // Clear the event structure to zero
+    event.type = Expose; // Set the event type to Expose, indicating a redraw is needed
+    event.xexpose.window = w; // Specify the window to be redrawn
+    event.xexpose.count = 0; // Set to 0 to indicate this is the last expose event
+
+    // Send the Expose event to the specified window to trigger a redraw
+    XSendEvent(d, w, False, ExposureMask, &event);
+
+    // Flush the output buffer to ensure the X server processes all pending requests
+    XFlush(d);
+}
 
 /*
  * updates the image displayed in the window using a filepath
@@ -73,6 +112,9 @@ void shutdown(){
 void update_image_from_file(char *filepath){
     // Lock a mutex before updating the global image to prevent concurrent access
     pthread_mutex_lock(&image_lock);
+
+    //Destroy the previous image
+    DestroyPNG_Image(&image);
 
     // Load a new image from the specified file path
     image = png_load_from_file(filepath);
