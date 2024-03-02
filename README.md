@@ -5,26 +5,26 @@ Currently the project is under development, so the makefile includes flags for A
 The master header file is nagato.h, which includes compositing.h, key_constants.h, logo.h, png_image.h, scaling.h, and windowing.h. You can include nagato.h in order to use everything.
 ## compositing
 ### blend_with_background
-add documentation here
+Blends an image with a specified background color by modifying the image's pixel data in place. Assumes pixels are represented as four consecutive bytes (RGBA: Red, Green, Blue, Alpha) in a flat array. Sets the opacity to full for every pixel.
 ## key_constants
 ### See available key constants below
 add an image with a keyboard and a map of each key constant here
 ## logo
 ### resources_nagato_png
-add documentation here
+An array of data representing a PNG image of the logo.
 ### resources_nagato_png_len
-add documentation here
+The length of resources_nagato_png.
 ## png_image
 ### PNG_Image
-add documentation here
+A struct for storing PNG image data. It has width, height, bit depth, color type, and data attributes. Bytes per line can be calculated by multiplying the width by the number of channels (in the case of RGBA, width * 4).
 ### png_load_from_memory
-add documentation here
+Loads a PNG image from a memory buffer into a custom PNG_Image structure. For example, this function can be used to load the logo. It takes a pointer to memory and the memory size, and returns a pointer to a PNG_Image struct.
 ### png_load_from_file
-add documentation here
+Loads a PNG image from a file on disk into a custom PNG_Image structure. It takes a string filepath and returns a pointer to a PNG_Image struct.
 ### CreatePNG_Image
-add documentation here
+Creates a PNG_Image struct with the given width, height, bit depth, and color type and returns a pointer to it. The image data is initialized as transparent black.
 ### DestroyPNG_Image
-add documentation here
+Safely deallocates all memory used by the given PNG_Image struct.
 ## scaling
 ### nearest_neighbor_scale
 add documentation here
