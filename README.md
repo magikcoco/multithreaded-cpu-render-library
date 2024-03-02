@@ -27,9 +27,9 @@ Creates a PNG_Image struct with the given width, height, bit depth, and color ty
 Safely deallocates all memory used by the given PNG_Image struct.
 ## scaling
 ### nearest_neighbor_scale
-add documentation here
+Returns a new PNG_Image struct, which is scaled to the new width and height from the original image (given as a pointer to a PNG_Image). The PNG_Image is not deallocated or changed. The algorithm used is nearest neighbor, which is the fastest scaling algorithm, however typically results in a pixelated image or otherwise causes some clearly visible artifacting. Best used on images with very hard edges.
 ### bilinear_interpolation_scale
-add documentation here
+Returns a new PNG_Image struct, which is scaled to the new width and height from the original image (given as a pointer to a PNG_Image). The PNG_Image is not deallocated or changed. The algorithm used is bilinear interpolation, which is better at handling gradual gradients than nearest neighbor, but may result in blurry images and is not ideal when sharp details are a priority.
 ## windowing
 ### shutdown
 Raises a termination signal, which is handled to allow for the graceful shutdown of the GUI thread. This is functionally equivalent to closing the window.
