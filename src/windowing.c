@@ -14,8 +14,6 @@
 #include "windowing.h"
 
 //TODO: change window parameters while gui is operating
-//TODO: image is updatable, function must trigger expose events
-//TODO: retrieve mouse position
 
 #define MAX_KEYS 256
 
@@ -46,10 +44,11 @@ atomic_bool shutdown_flag = false;
 
 //multithreading variables
 pthread_t thread_id;
-pthread_mutex_t scaling_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t win_param_lock = PTHREAD_MUTEX_INITIALIZER;
+
 pthread_mutex_t image_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t key_handlers_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t scaling_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t win_param_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * handles what to do when SIGTERM is received
@@ -99,11 +98,17 @@ void update_image_from_memory(PNG_Image* newImage) {
     event.xexpose.window = w; // Specify the window to be redrawn
     event.xexpose.count = 0; // Set to 0 to indicate this is the last expose event
 
+    //Lock the display for thread safety
+    XLockDisplay(d);
+
     // Send the Expose event to the specified window to trigger a redraw
     XSendEvent(d, w, False, ExposureMask, &event);
 
     // Flush the output buffer to ensure the X server processes all pending requests
     XFlush(d);
+
+    // Unlock the display
+    XUnlockDisplay(d);
 }
 
 /*
@@ -135,11 +140,17 @@ void update_image_from_file(char *filepath){
     event.xexpose.window = w; // Specify the window to be redrawn
     event.xexpose.count = 0; // Set to 0 to indicate this is the last expose event
 
+    //Lock the display for thread safety
+    XLockDisplay(d);
+
     // Send the Expose event to the specified window to trigger a redraw
     XSendEvent(d, w, False, ExposureMask, &event);
 
     // Flush the output buffer to ensure the X server processes all pending requests
     XFlush(d);
+
+    // Unlock the display
+    XUnlockDisplay(d);
 }
 
 /*
@@ -237,9 +248,38 @@ void remove_key_handler(KeyMap key) {
 }
 
 /*
+ * gets the current location of the mouse
+ * returns 0 if successful or -1 otherwise
+ */
+int get_mouse_position(int *x, int *y) {
+    if (d == NULL || x == NULL || y == NULL) return -1;
+
+    XLockDisplay(d);
+    
+    Window root, child;
+    int rootX, rootY, winX, winY;
+    unsigned int mask;
+    
+    // Use the specified window instead of DefaultRootWindow
+    int success = XQueryPointer(d, w, &root, &child, &rootX, &rootY, &winX, &winY, &mask);
+    
+    if (success) {
+        *x = winX; // Position relative to the window's top-left corner
+        *y = winY; // Position relative to the window's top-left corner
+    }
+
+    XUnlockDisplay(d);
+
+    return success ? 0 : -1;
+}
+
+/*
  * returns an XImage copy of the PNG_Image given as an argument
  */
 XImage* png_image_to_ximage(PNG_Image* p) {
+    // Lock the display
+    XLockDisplay(d);
+
     // Check if the display (d) or PNG_Image (p) pointer is NULL, return NULL to indicate failure
     if (!d || !p) return NULL;
 
@@ -249,6 +289,9 @@ XImage* png_image_to_ximage(PNG_Image* p) {
     // Allocate and initialize an XImage structure for the display 'd', using the default visual and the determined depth
     // Assuming RGBA
     XImage* image = XCreateImage(d, DefaultVisual(d, 0), depth, ZPixmap, 0, (char*)malloc(p->width * p->height * 4), p->width, p->height, 32, 0);
+
+    // Unlock the display
+    XUnlockDisplay(d);
     // If XCreateImage fails to create the image, return NULL
     if (!image) return NULL;
 
@@ -274,7 +317,7 @@ XImage* png_image_to_ximage(PNG_Image* p) {
 void start_window_loop() {
     // Open a connection to the X server
     d = XOpenDisplay(NULL);
-
+    XLockDisplay(d);
     // Lock the mutex to safely update window parameters
     pthread_mutex_lock(&win_param_lock);
     // Create a simple window with specified dimensions and colors
@@ -290,6 +333,7 @@ void start_window_loop() {
     // Setup to handle window close events
     Atom wmDelete = XInternAtom(d, "WM_DELETE_WINDOW", True);
     XSetWMProtocols(d, w, &wmDelete, 1);
+    XUnlockDisplay(d);
 
     // Lock the mutex to safely update the global image
     pthread_mutex_lock(&image_lock);
@@ -305,7 +349,9 @@ void start_window_loop() {
     // Main event loop, continues until 'shutdown_flag' is set
     XEvent event;
     while (!atomic_load(&shutdown_flag)) {
+        XLockDisplay(d);
         XNextEvent(d, &event);
+        XUnlockDisplay(d);
 
         // If a window close event is received, initiate application shutdown
         if (event.type == ClientMessage && (Atom)event.xclient.data.l[0] == wmDelete) {
@@ -317,6 +363,7 @@ void start_window_loop() {
 
                 // Dynamically calculate the new size
                 pthread_mutex_lock(&win_param_lock);
+                XLockDisplay(d);
                 get_window_size(d, w, &width, &height);
 
                 // Determine the aspect ratios to decide how to scale the image
@@ -338,8 +385,8 @@ void start_window_loop() {
                 // Scale the image
                 XImage* scaled_image;
                 bool set_default_scaling = false;
-                pthread_mutex_lock(&scaling_lock); //get the scaling lock
                 pthread_mutex_lock(&image_lock); //get the image lock
+                pthread_mutex_lock(&scaling_lock); //get the scaling lock
                 if(use_nn){
                     PNG_Image* temp = nearest_neighbor_scale(image, new_width, new_height);
                     scaled_image = png_image_to_ximage(temp);
@@ -355,8 +402,8 @@ void start_window_loop() {
                     scaled_image = png_image_to_ximage(temp);
                     DestroyPNG_Image(&temp);
                 }
-                pthread_mutex_unlock(&scaling_lock); //release scaling lock
                 pthread_mutex_unlock(&image_lock); //release image lock
+                pthread_mutex_unlock(&scaling_lock); //release scaling lock
 
                 // This must be here or there will be a deadlock with aquiring the scaling lock
                 if(set_default_scaling) {
@@ -370,6 +417,7 @@ void start_window_loop() {
 
                 // Display the scaled image in the window
                 XPutImage(d, w, DefaultGC(d, 0), scaled_image, 0, 0, x_pos, y_pos, scaled_image->width, scaled_image->height);
+                XUnlockDisplay(d);
 
                 // Free resources associated with the scaled XImage
                 XDestroyImage(scaled_image);
@@ -392,7 +440,11 @@ void start_window_loop() {
     }
     pthread_mutex_unlock(&image_lock);
 
+    XLockDisplay(d);
+
     XCloseDisplay(d); // Close the display
+
+    XUnlockDisplay(d);
 }
 
 /*

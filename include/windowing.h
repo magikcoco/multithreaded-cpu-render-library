@@ -56,6 +56,11 @@ void handle_key_event(KeyHandler handler, KeyMap key);
 void remove_key_handler(KeyMap key);
 
 /*
+ * gets mouse position
+ */
+int get_mouse_position(int *x, int *y);
+
+/*
  * sets the window parameters
  */
 void set_window_parameters(int set_x, int set_y, int set_width, int set_height, int set_border_width);
