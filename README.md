@@ -49,6 +49,8 @@ Returns true if the scaling algorithm in use by the GUI is biliniear interpolati
 Adds the given key handler to the given key. Whenever that key is pressed, the key handler will trigger immediately.
 ### remove_key_handler
 Removes the key handler for a particular key. After calling this function, nothing will happen when pressing that key.
+### get_mouse_position
+Modifies the X and Y variable given to reflect the location of the mouse pointer, relative to the topleft corner of the window. The Y coordinate gets larger the further down in the window the mouse is, the X coordinate gets larger the further to the right in the window the mouse is. The topleft corner is (0, 0).
 ### set_window_parameters
 Sets the coordinates on the screen, the dimensions, and the border width of the window.
 ### start_gui
