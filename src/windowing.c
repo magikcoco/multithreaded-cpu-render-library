@@ -4,9 +4,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
 #include <X11/Xatom.h> //Atom handling for close event
 #include <X11/keysym.h> //Key handlers
-#include <X11/Xlib.h> // X window functions
 #include <X11/Xutil.h> // XDestroyImage
 #include "compositing.h"
 #include "logo.h"
@@ -39,8 +39,9 @@ PNG_Image* image;
 bool use_nn = false;
 bool use_bli = false;
 
-//shutdown bool
+//shutdown and startup bool
 atomic_bool shutdown_flag = false;
+atomic_bool start_flag = false;
 
 //multithreading variables
 pthread_t thread_id;
@@ -62,6 +63,13 @@ void termination_handler(){
  */
 void shutdown(){
     raise(SIGTERM);
+}
+
+/*
+ * returns the shutdown flag
+ */
+bool is_gui_shutdown(){
+    return atomic_load(&shutdown_flag);
 }
 
 /*
@@ -224,12 +232,19 @@ void get_window_size(Display* display, Window window, int* width, int* height) {
 /*
  * adds a key event handler
  */
-void handle_key_event(KeyHandler handler, KeyMap key) {
-    //acquire the key handlers lock
+void handle_key_event(KeyHandler handler, KeySym key) {
+    // If start flag is false abort
+    if(atomic_load(&start_flag)) return;
+
+    // Acquire the key handlers lock
     pthread_mutex_lock(&key_handlers_lock);
-    if (key < MAX_KEYS) {
-        //attach the handler to the given key
-        key_handlers[key] = handler;
+    XLockDisplay(d);
+    KeyCode key_code = XKeysymToKeycode(d, key);
+    XUnlockDisplay(d);
+    if (key_code < MAX_KEYS) {
+        // Attach the handler to the given key
+        key_handlers[key_code] = handler;
+        printf("keycode %d, keysym %lu\n", key_code, key);
     }
     pthread_mutex_unlock(&key_handlers_lock);
 }
@@ -237,12 +252,18 @@ void handle_key_event(KeyHandler handler, KeyMap key) {
 /*
  * removes the event handler for the key specified
  */
-void remove_key_handler(KeyMap key) {
-    //acquire the key handlers lock
+void remove_key_handler(KeySym key) {
+    // If start flag is false abort
+    if(atomic_load(&start_flag)) return;
+
+    // Acquire the key handlers lock
     pthread_mutex_lock(&key_handlers_lock);
-    if (key < MAX_KEYS) {
-        //change the given key to NULL
-        key_handlers[key] = NULL;
+    XLockDisplay(d);
+    KeyCode key_code = XKeysymToKeycode(d, key);
+    XUnlockDisplay(d);
+    if (key_code < MAX_KEYS) {
+        // Change the given key to NULL
+        key_handlers[key_code] = NULL;
     }
     pthread_mutex_unlock(&key_handlers_lock);
 }
@@ -315,8 +336,6 @@ XImage* png_image_to_ximage(PNG_Image* p) {
 }
 
 void start_window_loop() {
-    // Open a connection to the X server
-    d = XOpenDisplay(NULL);
     XLockDisplay(d);
     // Lock the mutex to safely update window parameters
     pthread_mutex_lock(&win_param_lock);
@@ -425,9 +444,12 @@ void start_window_loop() {
         } else if (event.type == KeyPress) {
             //TODO: worker threads
             KeySym key = XLookupKeysym(&event.xkey, 0);
+            XLockDisplay(d);
+            KeyCode key_code = XKeysymToKeycode(d, key);
+            XUnlockDisplay(d);
             pthread_mutex_lock(&key_handlers_lock);
-            if (key < MAX_KEYS && key_handlers[key]) {
-                key_handlers[key](); // Execute the key handler if one is set
+            if (key_code < MAX_KEYS && key_handlers[key_code]) {
+                key_handlers[key_code](); // Execute the key handler if one is set
             }
             pthread_mutex_unlock(&key_handlers_lock);
         }
@@ -460,8 +482,19 @@ void* start_gui_thread(void* arg){
  * starts the gui in its own thread
  */
 void start_gui() {
+    // If already started do nothing
+    if(atomic_load(&start_flag)) return;
+
     // Initialize X11 library for multithreading support
     XInitThreads();
+
+    // Open a connection to the X server
+    // Done at this stage to prevent timing issues
+    d = XOpenDisplay(NULL);
+    if(d == NULL) return; // XOpenDisplay failed, abort
+
+    // Set start_flag
+    atomic_store(&start_flag, true);
 
     // Set up a signal handler for SIGTERM to cleanly terminate the GUI
     signal(SIGTERM, termination_handler);

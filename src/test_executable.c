@@ -11,6 +11,7 @@ void q_handler(){
 
 //TODO: tab, ctrl, etc dont work properly
 void tab_handler(){
+    printf("here\n");
     int x = 0;
     int y = 0;
     get_mouse_position(&x, &y);
@@ -27,9 +28,8 @@ int main() {
     set_window_parameters(x, y, width, height, border_width);
 
     handle_key_event(space_handler, Space);
-    handle_key_event(tab_handler, K_q);
-    //handle_key_event(tab_handler, Tab);
+    handle_key_event(q_handler, K_q);
+    handle_key_event(tab_handler, Tab);
 
     start_gui();
-    return 0;
 }

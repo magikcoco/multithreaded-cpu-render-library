@@ -2,6 +2,7 @@
 #define WINDOWING_H
 
 #include <stdbool.h>
+#include <X11/Xlib.h> // X window functions
 #include "png_image.h"
 
 // Define KeyHandler as a function pointer type
@@ -14,6 +15,11 @@ typedef unsigned int KeyMap;
  * raises a signal for termination request
  */
 void shutdown();
+
+/*
+ * checks if the shutdown flag has been triggered
+ */
+bool is_gui_shutdown();
 
 /*
  * updates the image displayed in the window using an existing PNG_Image in memory
@@ -48,12 +54,12 @@ void set_scaling_bli();
 /*
  * adds a key event handler
  */
-void handle_key_event(KeyHandler handler, KeyMap key);
+void handle_key_event(KeyHandler handler, KeySym key);
 
 /*
  * removes the event handler for the key specified
  */
-void remove_key_handler(KeyMap key);
+void remove_key_handler(KeySym key);
 
 /*
  * gets mouse position
@@ -64,6 +70,8 @@ int get_mouse_position(int *x, int *y);
  * sets the window parameters
  */
 void set_window_parameters(int set_x, int set_y, int set_width, int set_height, int set_border_width);
+
+void frame_rate_control(int targetFPS);
 
 /*
  * starts the window loop, with a function signature acceptable for pthread
