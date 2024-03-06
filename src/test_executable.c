@@ -8,10 +8,7 @@ void q_handler(){
     update_image_from_memory(png_load_from_memory(resources_nagato_png, resources_nagato_png_len));
 }
 
-
-//TODO: tab, ctrl, etc dont work properly
 void tab_handler(){
-    printf("here\n");
     int x = 0;
     int y = 0;
     get_mouse_position(&x, &y);
@@ -27,9 +24,13 @@ int main() {
     //Optional, these are the defaults
     set_window_parameters(x, y, width, height, border_width);
 
+    start_gui();
+
     handle_key_event(space_handler, Space);
     handle_key_event(q_handler, K_q);
     handle_key_event(tab_handler, Tab);
 
-    start_gui();
+    while(!is_gui_shutdown()){
+        frame_rate_control(24);
+    }
 }
