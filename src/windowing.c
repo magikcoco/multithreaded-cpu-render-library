@@ -4,7 +4,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
+#include <time.h>
+#include <unistd.h>
 #include <X11/Xatom.h> //Atom handling for close event
 #include <X11/keysym.h> //Key handlers
 #include <X11/Xutil.h> // XDestroyImage
@@ -13,43 +14,94 @@
 #include "scaling.h"
 #include "windowing.h"
 
-//TODO: change window parameters while gui is operating
-
+// Constants
 #define MAX_KEYS 256
 
-//defaults for window
+// Window parameters
 int x = 50;
 int y = 50;
 int width = 250;
 int height = 250;
 int border_width = 1;
 
-//other globals
-Display* d;
-Window w;
+// Other globals
+Display* d; // Connection to X Server
+Window w; // Window
+struct timespec last_frame_time = { .tv_sec = -1, .tv_nsec = -1 }; // Frame time structure
+KeyHandler key_handlers[MAX_KEYS]; // Array to store handlers for each key
+PNG_Image* image; // Image to display in the window
 
-// Array to store handlers for each key
-KeyHandler key_handlers[MAX_KEYS];
+// Scaling bools
+bool use_nn = false; // Indicates if nearest neighbor is in use
+bool use_bli = false; // Indicates if bilinear interpolation is in use
 
-//image variables
-//XImage* image;
-PNG_Image* image;
+// Shutdown and startup bool
+atomic_bool shutdown_flag = false; // When true triggers shutdown of GUI
+atomic_bool start_flag = false; // When false indicates that the GUI has not started
 
-//scaling bools
-bool use_nn = false;
-bool use_bli = false;
+// Multithreading variables
+pthread_t thread_id; // Thread id for the GUI thread
+// Acquired in alphabetical order (as listed)
+pthread_mutex_t image_lock = PTHREAD_MUTEX_INITIALIZER; // Lock for the image to display on the screen
+pthread_mutex_t key_handlers_lock = PTHREAD_MUTEX_INITIALIZER; // Lock for the key handlers
+pthread_mutex_t scaling_lock = PTHREAD_MUTEX_INITIALIZER; // Lock for the scaling variables
+pthread_mutex_t win_param_lock = PTHREAD_MUTEX_INITIALIZER; // Lock for the window parameters
 
-//shutdown and startup bool
-atomic_bool shutdown_flag = false;
-atomic_bool start_flag = false;
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////// HELPER FUNCTIONS ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//multithreading variables
-pthread_t thread_id;
+/*
+ * sets the given width and height variables to be equal to the current width and height of the window
+ */
+void get_window_size(Display* display, Window window, int* width, int* height) {
+    XWindowAttributes attributes;
+    XGetWindowAttributes(display, window, &attributes);
 
-pthread_mutex_t image_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t key_handlers_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t scaling_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t win_param_lock = PTHREAD_MUTEX_INITIALIZER;
+    *width = attributes.width;
+    *height = attributes.height;
+}
+
+/*
+ * returns an XImage copy of the PNG_Image given as an argument
+ */
+XImage* png_image_to_ximage(PNG_Image* p) {
+    // Lock the display
+    XLockDisplay(d);
+
+    // Check if the display (d) or PNG_Image (p) pointer is NULL, return NULL to indicate failure
+    if (!d || !p) return NULL;
+
+    // Get the color depth of the default screen of the display 'd'
+    int depth = DefaultDepth(d, 0);
+
+    // Allocate and initialize an XImage structure for the display 'd', using the default visual and the determined depth
+    // Assuming RGBA
+    XImage* image = XCreateImage(d, DefaultVisual(d, 0), depth, ZPixmap, 0, (char*)malloc(p->width * p->height * 4), p->width, p->height, 32, 0);
+
+    // Unlock the display
+    XUnlockDisplay(d);
+    // If XCreateImage fails to create the image, return NULL
+    if (!image) return NULL;
+
+    // Iterate over each pixel in the PNG_Image to copy its data to the XImage
+    for (int y = 0; y < p->height; y++) {
+        for (int x = 0; x < p->width; x++) {
+            unsigned long pixel = 0; // Temporary storage for the pixel value
+            int idx = (y * p->width + x) * 4; // Calculate the index in the PNG data array (4 bytes per pixel)
+            // Construct the pixel value for the XImage from the PNG data, assuming BGRX format for the display
+            pixel |= p->data[idx + 2]; // Blue
+            pixel |= p->data[idx + 1] << 8; // Green
+            pixel |= p->data[idx] << 16; // Red
+            // The alpha component is not used in XImage.
+            // Place the pixel value into the XImage at position (x, y)
+            XPutPixel(image, x, y, pixel);
+        }
+    }
+
+    // Return the pointer to the newly created XImage
+    return image;
+}
 
 /*
  * handles what to do when SIGTERM is received
@@ -57,6 +109,24 @@ pthread_mutex_t win_param_lock = PTHREAD_MUTEX_INITIALIZER;
 void termination_handler(){
     atomic_store(&shutdown_flag, true);
 }
+
+/*
+ * initializes timespec struct with the current time
+ */
+void get_current_time(struct timespec *time) {
+    clock_gettime(CLOCK_MONOTONIC, time);
+}
+
+/* 
+ * calculates the time difference in nanoseconds
+ */
+long time_diff_nanoseconds(struct timespec *start, struct timespec *end) {
+    return (end->tv_sec - start->tv_sec) * 1000000000L + (end->tv_nsec - start->tv_nsec);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////// SHUTDOWN FUNCTIONS ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * raises a signal for termination request
@@ -71,6 +141,30 @@ void shutdown(){
 bool is_gui_shutdown(){
     return atomic_load(&shutdown_flag);
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////// WINDOW PARAMETER FUNCTIONS ////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//TODO: change window parameters while gui is operating
+//TODO: break this up into individual getters and setters
+
+/*
+ * sets the window parameters
+ */
+void set_window_parameters(int set_x, int set_y, int set_width, int set_height, int set_border_width){
+    pthread_mutex_lock(&win_param_lock);
+    x = set_x;
+    y = set_y;
+    width = set_width;
+    height = set_height;
+    border_width = set_border_width;
+    pthread_mutex_unlock(&win_param_lock);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////// IMAGE UPDATE FUNCTIONS ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * updates the image displayed in the window using an existing PNG_Image in memory
@@ -161,6 +255,10 @@ void update_image_from_file(char *filepath){
     XUnlockDisplay(d);
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////// SCALING FUNCTIONS ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /*
  * returns true if nearest neighbor scaling is in use, false otherwise
  */
@@ -203,38 +301,19 @@ void set_scaling_bli(){
     pthread_mutex_unlock(&scaling_lock);
 }
 
-//TODO: break this up into individual getters and setters
-
-/*
- * sets the window parameters
- */
-void set_window_parameters(int set_x, int set_y, int set_width, int set_height, int set_border_width){
-    pthread_mutex_lock(&win_param_lock);
-    x = set_x;
-    y = set_y;
-    width = set_width;
-    height = set_height;
-    border_width = set_border_width;
-    pthread_mutex_unlock(&win_param_lock);
-}
-
-/*
- * sets the given width and height variables to be equal to the current width and height of the window
- */
-void get_window_size(Display* display, Window window, int* width, int* height) {
-    XWindowAttributes attributes;
-    XGetWindowAttributes(display, window, &attributes);
-
-    *width = attributes.width;
-    *height = attributes.height;
-}
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////// INPUT HANDLING FUNCTIONS ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * adds a key event handler
  */
 void handle_key_event(KeyHandler handler, KeySym key) {
     // If start flag is false abort
-    if(atomic_load(&start_flag)) return;
+    if(!atomic_load(&start_flag)) {
+        perror("Add Key Handler");
+        return;
+    }
 
     // Acquire the key handlers lock
     pthread_mutex_lock(&key_handlers_lock);
@@ -254,7 +333,10 @@ void handle_key_event(KeyHandler handler, KeySym key) {
  */
 void remove_key_handler(KeySym key) {
     // If start flag is false abort
-    if(atomic_load(&start_flag)) return;
+    if(!atomic_load(&start_flag)) {
+        perror("Remove Key Handler");
+        return;
+    }
 
     // Acquire the key handlers lock
     pthread_mutex_lock(&key_handlers_lock);
@@ -294,47 +376,42 @@ int get_mouse_position(int *x, int *y) {
     return success ? 0 : -1;
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////// FRAMERATE FUNCTIONS ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /*
- * returns an XImage copy of the PNG_Image given as an argument
+ * Function to delay execution to target a specific frame rate
  */
-XImage* png_image_to_ximage(PNG_Image* p) {
-    // Lock the display
-    XLockDisplay(d);
+void frame_rate_control(int targetFPS) {
+    if (targetFPS <= 0) return; // Prevent division by zero
 
-    // Check if the display (d) or PNG_Image (p) pointer is NULL, return NULL to indicate failure
-    if (!d || !p) return NULL;
+    if(last_frame_time.tv_sec == -1 || last_frame_time.tv_nsec == -1) get_current_time(&last_frame_time);
 
-    // Get the color depth of the default screen of the display 'd'
-    int depth = DefaultDepth(d, 0);
+    struct timespec currentTime, sleepTime;
+    long targetFrameDuration = 1000000000L / targetFPS; // Nanoseconds per frame
+    get_current_time(&currentTime);
 
-    // Allocate and initialize an XImage structure for the display 'd', using the default visual and the determined depth
-    // Assuming RGBA
-    XImage* image = XCreateImage(d, DefaultVisual(d, 0), depth, ZPixmap, 0, (char*)malloc(p->width * p->height * 4), p->width, p->height, 32, 0);
+    long timeTaken = time_diff_nanoseconds(&last_frame_time, &currentTime);
+    long delayTime = targetFrameDuration - timeTaken;
 
-    // Unlock the display
-    XUnlockDisplay(d);
-    // If XCreateImage fails to create the image, return NULL
-    if (!image) return NULL;
-
-    // Iterate over each pixel in the PNG_Image to copy its data to the XImage
-    for (int y = 0; y < p->height; y++) {
-        for (int x = 0; x < p->width; x++) {
-            unsigned long pixel = 0; // Temporary storage for the pixel value
-            int idx = (y * p->width + x) * 4; // Calculate the index in the PNG data array (4 bytes per pixel)
-            // Construct the pixel value for the XImage from the PNG data, assuming BGRX format for the display
-            pixel |= p->data[idx + 2]; // Blue
-            pixel |= p->data[idx + 1] << 8; // Green
-            pixel |= p->data[idx] << 16; // Red
-            // The alpha component is not used in XImage.
-            // Place the pixel value into the XImage at position (x, y)
-            XPutPixel(image, x, y, pixel);
-        }
+    if (delayTime > 0) {
+        sleepTime.tv_sec = delayTime / 1000000000L;
+        sleepTime.tv_nsec = delayTime % 1000000000L;
+        nanosleep(&sleepTime, NULL);
     }
 
-    // Return the pointer to the newly created XImage
-    return image;
+    // Update the last frame time to now, after the delay
+    get_current_time(&last_frame_time);
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////// GUI STARTING AND LOOP //////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * the main gui loop
+ */
 void start_window_loop() {
     XLockDisplay(d);
     // Lock the mutex to safely update window parameters
@@ -378,8 +455,6 @@ void start_window_loop() {
         } else if (event.type == Expose) {
             // On an expose event, redraw the image
             if (image != NULL) {
-                //TODO: optimze lock acquisition and release
-
                 // Dynamically calculate the new size
                 pthread_mutex_lock(&win_param_lock);
                 XLockDisplay(d);
@@ -507,7 +582,7 @@ void start_gui() {
         perror("Failed to create GUI thread");
         exit(err);
     }
-    /*
+
     // Detach the GUI thread
     err = pthread_detach(thread_id);
     if (err != 0) {
@@ -521,12 +596,5 @@ void start_gui() {
             perror("Failed to join GUI thread after failed detach");
             exit(err);
         }
-    }
-    */
-    //TODO: switch to the above when there is something else for the main thread to do
-    err = pthread_join(thread_id, NULL);
-    if (err != 0) {
-        perror("Failed to join GUI thread after failed detach");
-        exit(err);
     }
 }
