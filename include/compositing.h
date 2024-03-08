@@ -2,13 +2,18 @@
 #define COMPOSITING_H
 
 #include <png.h>
+#include <pthread.h>
+#include "png_image.h"
 
 typedef struct {
     png_byte red, green, blue, alpha;
 } rgba_color;
 
-//TODO: function to queue up images to be flattened into a single image
 //TODO: function to flatten all queued iamges into a single image
+
+void push_image(PNG_Image* image, int x, int y);
+void clear_image_stack();
+void destroy_image_stack();
 
 /*
  * Blends an image with a specified background color by modifying the image's pixel data in place
