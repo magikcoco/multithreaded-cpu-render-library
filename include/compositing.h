@@ -11,9 +11,14 @@ typedef struct {
 
 //TODO: function to flatten all queued iamges into a single image
 
-void push_image(PNG_Image* image, int x, int y);
-void clear_image_stack();
 void destroy_image_stack();
+void clear_image_stack();
+
+// Image flattening
+void push_image(PNG_Image* image, int x, int y);
+PNG_Image* flatten_stack_into_image();
+
+// Other image manipulation
 
 /*
  * Blends an image with a specified background color by modifying the image's pixel data in place
