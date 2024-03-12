@@ -11,9 +11,8 @@ typedef struct {
 } memory_reader_state;
 
 /*
- * a series of transformations on a PNG image's color and bit depth to standardize its format
- * expanding bit depths, converting color palettes to RGB, adding alpha channels where appropriate, and converting grayscale images to RGB
- * uses libpng to manipulate PNG image data directly
+ * A series of transformations on a PNG image's color and bit depth to standardize its format to RGBA 8 bits
+ * Uses libpng to manipulate PNG image data directly
  */
 void apply_color_transformations(png_structp png, png_infop info) {
     // Retrieve the color type of the image (e.g., RGB, grayscale, palette)
@@ -53,7 +52,7 @@ void apply_color_transformations(png_structp png, png_infop info) {
 }
 
 /*
- * reads image data from a PNG file into a dynamically allocated array of row pointers, each pointing to the pixel data of a single row
+ * Reads image data from a PNG file into a dynamically allocated array of row pointers, each pointing to the pixel data of a single row
  */
 png_bytep *allocate_and_load_png_image_rows(png_structp png, png_infop info, int height) {
     // Dynamically allocate memory for an array of pointers to each row of the image
@@ -73,7 +72,7 @@ png_bytep *allocate_and_load_png_image_rows(png_structp png, png_infop info, int
 }
 
 /*
- * read PNG data from a memory buffer rather than from a file or stream
+ * Read PNG data from a memory buffer rather than from a file or stream
  */
 void read_png_data_from_memory_buffer(png_structp png_ptr, png_bytep outBytes, png_size_t byteCountToRead) {
     // Retrieve the custom I/O state pointer set with png_set_read_fn()
@@ -93,11 +92,27 @@ void read_png_data_from_memory_buffer(png_structp png_ptr, png_bytep outBytes, p
 }
 
 /*
- * loads a PNG image from a memory buffer into a custom PNG_Image structure
+ * Allocates memory for the PNG_Image struct
+ */
+PNG_Image* create_empty_png_image_struct() {
+    PNG_Image* img = (PNG_Image*)malloc(sizeof(PNG_Image));
+    if (!img) {
+        fprintf(stderr, "Failed to allocate memory for PNG_Image\n");
+        return NULL;
+    }
+    // Initialize with default values or leave uninitialized to be set later
+    img->data = NULL; // Will be allocated later
+    return img;
+}
+
+/*
+ * Loads a PNG image from a memory buffer into a custom PNG_Image structure
  */
 PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
     // Create a PNG read structure required for processing PNG data.
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+
+    // Check for failure to create the read struct
     if (!png) {
         // If the read structure couldn't be created, print an error and return NULL
         fprintf(stderr, "Failed to create PNG read struct\n");
@@ -106,6 +121,8 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
 
     // Create a PNG info structure to hold the image information
     png_infop info = png_create_info_struct(png);
+
+    // Check for failure to create the info struct
     if (!info) {
         // If the info structure couldn't be created, clean up and return NULL
         fprintf(stderr, "Failed to create PNG info struct\n");
@@ -123,20 +140,25 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
 
     // Initialize memory_reader_state here to closely align with the XImage version
     memory_reader_state state = {memory, memory_size, 0};
+
     // Set the custom read function to use the memory reader state
     png_set_read_fn(png, &state, read_png_data_from_memory_buffer);
+
     // Read the PNG image info
     png_read_info(png, info);
+
     // Apply transformations to standardize the image data format
     apply_color_transformations(png, info);
+
     // Update the PNG structure with the transformations
     png_read_update_info(png, info);
 
     // Allocate memory for a PNG_Image structure to hold the image data
-    PNG_Image* img = (PNG_Image*)malloc(sizeof(PNG_Image));
+    PNG_Image* img = create_empty_png_image_struct();
+
+    // Check for failure
     if (!img) {
         // If allocation fails, clean up and return NULL
-        fprintf(stderr, "Failed to allocate memory for PNG_Image\n");
         png_destroy_read_struct(&png, &info, NULL);
         return NULL;
     }
@@ -144,13 +166,21 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
     // Set the image dimensions, bit depth, and color type from the PNG info structure
     img->width = png_get_image_width(png, info);
     img->height = png_get_image_height(png, info);
-    img->bitDepth = png_get_bit_depth(png, info);
-    img->colorType = png_get_color_type(png, info);
 
     // Calculate the number of bytes in a row of the image
     size_t row_bytes = png_get_rowbytes(png, info);
+
     // Allocate memory for the image data based on the number of bytes per row and the image height
     img->data = (unsigned char*)malloc(row_bytes * img->height);
+
+    // Check for failure
+    if (!img->data) {
+        // If allocation fails, clean up and return NULL
+        free(img);
+        png_destroy_read_struct(&png, &info, NULL);
+        return NULL;
+    }
+
     // Read the image data into an array of row pointers
     png_bytep* row_pointers = allocate_and_load_png_image_rows(png, info, img->height);
 
@@ -161,6 +191,7 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
         free(row_pointers[y]); // Free each row pointer after copying
     }
 
+    // Cleanup
     free(row_pointers); // Free the row pointers array
     png_destroy_read_struct(&png, &info, NULL); // Clean up PNG read and info structures
 
@@ -169,11 +200,13 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
 }
 
 /*
- * loads a PNG image from a specified file path into a custom PNG_Image structure
+ * Loads a PNG image from a specified file path into a custom PNG_Image structure
  */
 PNG_Image* png_load_from_file(char *filepath) {
     // Attempt to open the specified file in read-binary mode
     FILE *fp = fopen(filepath, "rb");
+
+    // Check for failure to open file
     if (!fp) {
         // If the file couldn't be opened, print an error message and return NULL
         fprintf(stderr, "Could not open file %s for reading\n", filepath);
@@ -182,6 +215,8 @@ PNG_Image* png_load_from_file(char *filepath) {
 
     // Create a PNG read structure needed for processing PNG files
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+
+    // Check for failure to crate read struct
     if (!png) {
         // If the read structure couldn't be created, close the file and return NULL
         fclose(fp);
@@ -190,6 +225,8 @@ PNG_Image* png_load_from_file(char *filepath) {
 
     // Create a PNG info structure to hold the image information
     png_infop info = png_create_info_struct(png);
+
+    // Check for failure to create info struct
     if (!info) {
         // If the info structure couldn't be created, clean up and return NULL
         png_destroy_read_struct(&png, NULL, NULL);
@@ -207,10 +244,13 @@ PNG_Image* png_load_from_file(char *filepath) {
 
     // Initialize libpng's input/output to the opened file
     png_init_io(png, fp);
+
     // Read the PNG image info
     png_read_info(png, info);
+
     // Apply transformations to standardize the image data format
     apply_color_transformations(png, info);
+
     // Update the PNG structure with the transformations
     png_read_update_info(png, info);
 
@@ -218,12 +258,10 @@ PNG_Image* png_load_from_file(char *filepath) {
     int width = png_get_image_width(png, info);
     int height = png_get_image_height(png, info);
 
-    // Allocate memory and load the image data into an array of row pointers
-    png_bytep* row_pointers = allocate_and_load_png_image_rows(png, info, height);
-
     // Allocate memory for a PNG_Image structure to store the image data
-    // Assuming the image has been transformed to RGBA format
-    PNG_Image* img = (PNG_Image*)malloc(sizeof(PNG_Image));
+    PNG_Image* img = create_empty_png_image_struct();
+
+    // Check for allocation failure
     if (!img) {
         // If memory allocation fails, clean up and return NULL
         png_destroy_read_struct(&png, &info, NULL);
@@ -234,22 +272,34 @@ PNG_Image* png_load_from_file(char *filepath) {
     // Set the image properties and allocate memory for the image data
     img->width = width;
     img->height = height;
-    img->bitDepth = 8; // Assuming 8 bits per channel after transformations
-    img->colorType = PNG_COLOR_TYPE_RGBA;
+
+    // Allocate memory for data
     img->data = (unsigned char*)malloc(width * height * 4); // 4 bytes per pixel (RGBA)
+
+    // Check for failure
+    if (!img->data) {
+        // If allocation fails, clean up and return NULL
+        free(img);
+        png_destroy_read_struct(&png, &info, NULL);
+        fclose(fp);
+        return NULL;
+    }
+
+    // Allocate memory and load the image data into an array of row pointers
+    png_bytep* row_pointers = allocate_and_load_png_image_rows(png, info, height);
 
     // Copy the image data from the row pointers into the img->data buffer
     for (int y = 0; y < height; y++) {
         memcpy(img->data + (y * width * 4), row_pointers[y], width * 4);
     }
-
+    
     // Clean up the memory allocated for the row pointers
     for (int i = 0; i < height; i++) {
         free(row_pointers[i]);
     }
     free(row_pointers);
 
-    // Clean up PNG read and info structures and close the file
+    // Clean up other resources
     png_destroy_read_struct(&png, &info, NULL);
     fclose(fp);
 
@@ -258,28 +308,27 @@ PNG_Image* png_load_from_file(char *filepath) {
 }
 
 /*
- * creates and initializes a new PNG_Image structure, allocating memory for both the structure and its associated image data
+ * Creates and initializes a new PNG_Image structure, allocating memory for both the structure and its associated image data
  */
-PNG_Image* CreatePNG_Image(int width, int height, int bitDepth, int colorType) {
+PNG_Image* png_create_image(int width, int height) {
     // Allocate memory for the PNG_Image struct
-    PNG_Image* img = (PNG_Image*)malloc(sizeof(PNG_Image));
+    PNG_Image* img = create_empty_png_image_struct();
     if (!img) {
-        // If memory allocation fails, print an error and return NULL
-        fprintf(stderr, "Failed to allocate memory for PNG_Image\n");
+        // If memory allocation fails, return null
         return NULL;
     }
 
     // Initialize the structure fields with the provided parameters
     img->width = width;
     img->height = height;
-    img->bitDepth = bitDepth;
-    img->colorType = colorType;
 
     // Calculate the number of bytes needed for the image data
     size_t dataSize = width * height * 4; // 4 bytes per pixel for RGBA
 
     // Allocate memory for the image data
     img->data = (unsigned char*)malloc(dataSize);
+
+    // Check for failure
     if (!img->data) {
         // If memory allocation for the image data fails, print an error
         fprintf(stderr, "Failed to allocate memory for image data\n");
@@ -287,17 +336,54 @@ PNG_Image* CreatePNG_Image(int width, int height, int bitDepth, int colorType) {
         return NULL;
     }
 
-    // Initialize the image data to zero, effectively making it transparent black
-    memset(img->data, 0, dataSize);
+    // Initialize the image data to fully opaque white
+    for (size_t i = 0; i < dataSize; i += 4) {
+        img->data[i] = 255; // Red component
+        img->data[i + 1] = 255; // Green component
+        img->data[i + 2] = 255; // Blue component
+        img->data[i + 3] = 255; // Alpha component (fully opaque)
+    }
 
     // Return the pointer to the newly created PNG_Image structure
     return img;
 }
 
 /*
- * safely deallocate memory used by a PNG_Image structure, including its image data, and then the structure itself
+ * Creates a deep copy of a PNG_Image assuming RGBA format
  */
-void DestroyPNG_Image(PNG_Image** imgPtr) {
+PNG_Image* png_copy_image(const PNG_Image* source) {
+    if (source == NULL) return NULL;
+
+    // Allocate memory for the copy of the PNG_Image structure
+    PNG_Image* copy = (PNG_Image*)malloc(sizeof(PNG_Image));
+    if (copy == NULL) {
+        fprintf(stderr, "Failed to allocate memory for PNG_Image copy\n");
+        return NULL;
+    }
+
+    // Copy basic attributes directly
+    copy->width = source->width;
+    copy->height = source->height;
+
+    // Since we're assuming RGBA format, we calculate the data size as width * height * 4
+    size_t dataSize = source->width * source->height * 4; // 4 bytes per pixel for RGBA
+    copy->data = (unsigned char*)malloc(dataSize);
+    if (copy->data == NULL) {
+        fprintf(stderr, "Failed to allocate memory for image data copy\n");
+        free(copy); // Free the allocated PNG_Image structure if data allocation fails
+        return NULL;
+    }
+
+    // Copy the image data
+    memcpy(copy->data, source->data, dataSize);
+
+    return copy;
+}
+
+/*
+ * Safely deallocate memory used by a PNG_Image structure, including its image data, and then the structure itself
+ */
+void png_destroy_image(PNG_Image** imgPtr) {
     // First, check if the provided PNG_Image pointer is not NULL to avoid attempting to free a NULL pointer
     if (imgPtr != NULL && *imgPtr != NULL) {
         // Free the image data if it exists
