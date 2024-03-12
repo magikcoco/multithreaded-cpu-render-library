@@ -64,7 +64,7 @@ void destroy_image_stack() {
 
     // Iterate through the stack and deallocate each PNG_Image
     for(int i = 0; i <= global_stack.top; i++) {
-        DestroyPNG_Image(&global_stack.items[i]->image);
+        png_destroy_image(&global_stack.items[i]->image);
         free(global_stack.items[i]); // Free the struct itself
     }
 
@@ -175,7 +175,7 @@ PNG_Image* flatten_stack_into_image() {
     
     // Create a new PNG_Image to serve as the canvas
     //TODO: Change this because it makes the background black instead of white
-    PNG_Image* flattened = CreatePNG_Image(bgWidth, bgHeight, 8, PNG_COLOR_TYPE_RGBA);
+    PNG_Image* flattened = png_create_image(bgWidth, bgHeight);
     
     // Iterate through the stack from top (background) to bottom
     for (int i = global_stack.top; i >= 0; i--) {

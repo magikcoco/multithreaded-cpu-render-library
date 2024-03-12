@@ -46,13 +46,13 @@ PNG_Image* nearest_neighbor_scale(PNG_Image* orig, int new_width, int new_height
     int y_ratio = (int)((orig->height << 16) / new_height) + 1;
 
     // Create a new PNG_Image structure for the scaled image with the specified dimensions and original image's bit depth and color type
-    PNG_Image* scaled = CreatePNG_Image(new_width, new_height, orig->bitDepth, orig->colorType);
+    PNG_Image* scaled = png_create_image(new_width, new_height);
 
     // Check if the scaled image and its data were successfully created; if not, print an error and return the original image
     if (!scaled || !scaled->data) {
         // If only the scaled image structure was created, free it to avoid memory leaks
         perror("Nearest Neighbor Scaling");
-        if (scaled) DestroyPNG_Image(&scaled);
+        if (scaled) png_destroy_image(&scaled);
         return orig;
     }
 
@@ -86,12 +86,13 @@ PNG_Image* nearest_neighbor_scale(PNG_Image* orig, int new_width, int new_height
  */
 PNG_Image* bilinear_interpolation_scale(PNG_Image* orig, int new_width, int new_height) {
     // Create a new PNG_Image structure for the scaled image
-    PNG_Image* scaled = CreatePNG_Image(new_width, new_height, orig->bitDepth, orig->colorType);
+    PNG_Image* scaled = png_create_image(new_width, new_height);
 
     // Check if memory allocation for the scaled image data was successful
     if (scaled->data == NULL) {
         perror("Bilinear interpolation");
-        return orig; // Return the original image if allocation failed
+        png_destroy_image(&scaled);
+        return NULL; // Return NULL on failure
     }
 
     // Calculate the ratio of the old dimensions to the new dimensions minus one to avoid accessing out of bounds
