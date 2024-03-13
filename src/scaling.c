@@ -39,7 +39,7 @@ unsigned int getB(unsigned int color) {
  * returns a newly created PNG_Image struct
  * does not deallocate the original PNG_Image at all
  */
-PNG_Image* nearest_neighbor_scale(PNG_Image* orig, int new_width, int new_height) {
+PNG_Image* nearest_neighbor_scale(const PNG_Image *const orig, int new_width, int new_height) {
     // Calculate the ratio of old width to new width, shifted left by 16 bits for fixed-point arithmetic, and add 1 for rounding
     int x_ratio = (int)((orig->width << 16) / new_width) + 1;
     // Calculate the ratio of old height to new height, similarly adjusted for fixed-point arithmetic
@@ -53,7 +53,7 @@ PNG_Image* nearest_neighbor_scale(PNG_Image* orig, int new_width, int new_height
         // If only the scaled image structure was created, free it to avoid memory leaks
         perror("Nearest Neighbor Scaling");
         if (scaled) png_destroy_image(&scaled);
-        return orig;
+        return NULL;
     }
 
     // Loop over each pixel in the new (scaled) image height
@@ -84,7 +84,7 @@ PNG_Image* nearest_neighbor_scale(PNG_Image* orig, int new_width, int new_height
  * returns a newly created PNG_Image struct
  * does not deallocate the original PNG_Image at all
  */
-PNG_Image* bilinear_interpolation_scale(PNG_Image* orig, int new_width, int new_height) {
+PNG_Image* bilinear_interpolation_scale(const PNG_Image *const orig, int new_width, int new_height) {
     // Create a new PNG_Image structure for the scaled image
     PNG_Image* scaled = png_create_image(new_width, new_height);
 
