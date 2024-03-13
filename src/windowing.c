@@ -32,9 +32,12 @@ int width = 250;
 int height = 250;
 int border_width = 1;
 
-// Keyhandler
+// Input handling
 #define MAX_KEYS 256 // "Why would you need more keys than this, right?" - last words in progress, I'm sure
 KeyHandler key_handlers[MAX_KEYS]; // Array to store handlers for each key, GUI thread exclusive
+
+#define MAX_MOUSE_BUTTONS 5
+MouseClickHandler mouse_handlers[MAX_MOUSE_BUTTONS];
 
 // Scaling booleans
 atomic_bool use_nn = false; // Indicates if nearest neighbor is in use
@@ -562,6 +565,52 @@ void remove_key_handler(KeySym key) {
 }
 
 /*
+ * Struct to contain handle_key_event function parameters
+ */
+typedef struct HandleMouseClickTaskArgs {
+    MouseClickHandler handler;
+    KeySym button;
+} HandleMouseClickTaskArgs;
+
+/*
+ * Wrapper function for handle_key_event that fits task queue signature requirements
+ */
+void handle_mouse_click_wrapper(void* arg) {
+    HandleKeyEventTaskArgs* taskArgs = (HandleKeyEventTaskArgs*)arg;
+    handle_mouse_click(taskArgs->handler, taskArgs->key); // Call the original function
+    free(taskArgs); // Clean up
+}
+
+/*
+ * Sets a given KeyHandler (function pointer) to execute when the given key is pressed
+ */
+void handle_mouse_click(MouseClickHandler handler, MouseButton button) {
+    if (!in_gui_thread()) {
+        // Not in the GUI thread, enqueue the task
+        HandleMouseClickTaskArgs* args = malloc(sizeof(HandleMouseClickTaskArgs));
+        if (args == NULL) {
+            // Handle memory allocation failure
+            return;
+        }
+        args->handler = handler;
+        args->button = button;
+
+        queue_enqueue(&queue, handle_mouse_click_wrapper, args);
+    } else {
+        // Check the start flag before attempting to attach the handler
+        if (!atomic_load(&start_flag)) {
+            perror("Add mouse click handler");
+            return;
+        }
+
+        if (button-1 < MAX_MOUSE_BUTTONS) {
+            // Directly attach the handler to the given key, assuming this executes on the GUI thread
+            mouse_handlers[button-1] = handler;
+        }
+    }
+}
+
+/*
  * Modifies the given pointers X and Y to the most recently known position of the mouse
  * Returns 0 if successful or -1 otherwise
  */
@@ -591,7 +640,7 @@ void start_window_loop() {
     // Make the window visible on the screen
     XMapWindow(d, w); // Maps the window on the screen
     // Register interest in certain types of events, including key presses
-    XSelectInput(d, w, ExposureMask | StructureNotifyMask | KeyPressMask);
+    XSelectInput(d, w, ExposureMask | StructureNotifyMask | KeyPressMask | ButtonPressMask);
 
     // Setup to handle window close events
     Atom wmDelete = XInternAtom(d, "WM_DELETE_WINDOW", True);
@@ -679,6 +728,10 @@ void start_window_loop() {
             KeyCode key_code = XKeysymToKeycode(d, key);
             if (key_code < MAX_KEYS && key_handlers[key_code]) {
                 key_handlers[key_code](); // Execute the key handler if one is set
+            }
+        } else if (event.type == ButtonPress) {
+            if (event.xbutton.button-1 < MAX_KEYS && mouse_handlers[event.xbutton.button-1]) {
+                mouse_handlers[event.xbutton.button-1](); // Execute the mouse button handler if one is set
             }
         }
     }

@@ -18,6 +18,10 @@ void tab_handler(){
     printf("%d (%d, %d)\n", z, x, y);
 }
 
+void right_click_handler(){
+    printf("Success!\n");
+}
+
 int main() {
     test = png_load_from_file("./resources/test.png");
     logo = png_load_from_memory(resources_nagato_png, resources_nagato_png_len);
@@ -29,6 +33,7 @@ int main() {
     handle_key_event(space_handler, Space);
     handle_key_event(q_handler, K_q);
     handle_key_event(tab_handler, Tab);
+    handle_mouse_click(right_click_handler, Mouse_Right_Click);
 
     while(!is_gui_shutdown()){
         frame_rate_control(24);

@@ -2,7 +2,7 @@
 #pragma once
 #include <X11/keysym.h>
 
-//row 1
+// Row 1
 #define Escape XK_Escape
 
 #define F1 XK_F1
@@ -24,7 +24,7 @@
 #define Scroll_Lock XK_Scroll_Lock
 #define Pause XK_Pause
 
-//row 2
+// Row 2
 #define Grave XK_grave
 #define K_0 XK_0
 #define K_1 XK_1
@@ -44,7 +44,7 @@
 #define Home XK_Home
 #define Page_Up XK_Page_Up
 
-//row 3
+// Row 3
 #define Tab XK_Tab
 #define K_q XK_q
 #define K_w XK_w
@@ -64,7 +64,7 @@
 #define End XK_End
 #define Page_Down XK_Page_Down
 
-//row 4
+// Row 4
 #define Caps_Lock XK_Caps_Lock
 #define K_a XK_a
 #define K_s XK_s
@@ -79,7 +79,7 @@
 #define Apostrophe XK_apostrophe
 #define Return XK_Return
 
-//row 5
+// Row 5
 #define Shift_L XK_Shift_L
 #define K_z XK_z
 #define K_x XK_x
@@ -94,7 +94,7 @@
 #define Shift_R XK_Shift_R
 #define Up XK_Up
 
-//row 6
+// Row 6
 #define Control_L XK_Control_L
 #define Meta_L XK_Meta_L
 #define Alt_L XK_Alt_L
@@ -109,3 +109,10 @@
 
 //TODO: numpad
 #define Num_Lock XK_Num_Lock
+
+// Mouse Button
+#define Mouse_Left_Click 1
+#define Mouse_Middle_Click 2
+#define Mouse_Right_Click 3
+#define Mouse_Wheel_Up 4
+#define Mouse_Wheel_Down 5

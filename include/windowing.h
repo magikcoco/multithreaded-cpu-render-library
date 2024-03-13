@@ -91,9 +91,19 @@ void set_scaling_bli();
 typedef void (*KeyHandler)(void);
 
 /*
+ * Define MouseClickHandler as a function pointer type
+ */
+typedef void (*MouseClickHandler)(void);
+
+/*
  * Define KeyCode as an alias for unsigned int
  */ 
 typedef unsigned int KeyMap;
+
+/*
+ * Define KeyCode as an alias for unsigned int
+ */ 
+typedef unsigned int MouseButton;
 
 /*
  * Sets a given KeyHandler (function pointer) to execute when the given key is pressed
@@ -104,6 +114,8 @@ void handle_key_event(KeyHandler handler, KeySym key);
  * Removes the event handler for the key specified
  */
 void remove_key_handler(KeySym key);
+
+void handle_mouse_click(MouseClickHandler handler, MouseButton button);
 
 /*
  * Modifies the given pointers X and Y to the most recently known position of the mouse
