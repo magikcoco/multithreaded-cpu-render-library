@@ -2,6 +2,7 @@
 
 PNG_Image* test;
 PNG_Image* logo;
+PNG_Image* color;
 
 void space_handler() {
     update_image(test);
@@ -9,6 +10,10 @@ void space_handler() {
 
 void q_handler(){
     update_image(logo);
+}
+
+void s_handler(){
+    update_image(color);
 }
 
 void tab_handler(){
@@ -25,6 +30,7 @@ void right_click_handler(){
 int main() {
     test = png_load_from_file("./resources/test.png");
     logo = png_load_from_memory(resources_nagato_png, resources_nagato_png_len);
+    color = png_create_image(100, 100, 0xFFFFFF);
 
     start_gui();
 
@@ -33,6 +39,7 @@ int main() {
     handle_key_event(space_handler, Space);
     handle_key_event(q_handler, K_q);
     handle_key_event(tab_handler, Tab);
+    handle_key_event(s_handler, K_s);
     handle_mouse_click(right_click_handler, Mouse_Right_Click);
 
     while(!is_gui_shutdown()){

@@ -46,7 +46,7 @@ PNG_Image* nearest_neighbor_scale(const PNG_Image *const orig, int new_width, in
     int y_ratio = (int)((orig->height << 16) / new_height) + 1;
 
     // Create a new PNG_Image structure for the scaled image with the specified dimensions and original image's bit depth and color type
-    PNG_Image* scaled = png_create_image(new_width, new_height);
+    PNG_Image* scaled = png_create_image(new_width, new_height, 0xFFFFFF);
 
     // Check if the scaled image and its data were successfully created; if not, print an error and return the original image
     if (!scaled || !scaled->data) {
@@ -86,7 +86,7 @@ PNG_Image* nearest_neighbor_scale(const PNG_Image *const orig, int new_width, in
  */
 PNG_Image* bilinear_interpolation_scale(const PNG_Image *const orig, int new_width, int new_height) {
     // Create a new PNG_Image structure for the scaled image
-    PNG_Image* scaled = png_create_image(new_width, new_height);
+    PNG_Image* scaled = png_create_image(new_width, new_height, 0xFFFFFF);
 
     // Check if memory allocation for the scaled image data was successful
     if (scaled->data == NULL) {

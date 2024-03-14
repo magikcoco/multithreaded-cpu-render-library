@@ -23,6 +23,7 @@
 Display* d; // Connection to X Server, GUI thread exclusive resource
 Window w; // Window, GUI thread exclusive
 PNG_Image* image; // Image to display in the window
+PNG_Image* background_color; // Image representing a solid color
 
 // Window parameters
 // Should only be directly accessed in the GUI thread
@@ -35,9 +36,8 @@ int border_width = 1;
 // Input handling
 #define MAX_KEYS 256 // "Why would you need more keys than this, right?" - last words in progress, I'm sure
 KeyHandler key_handlers[MAX_KEYS]; // Array to store handlers for each key, GUI thread exclusive
-
-#define MAX_MOUSE_BUTTONS 5
-MouseClickHandler mouse_handlers[MAX_MOUSE_BUTTONS];
+#define MAX_MOUSE_BUTTONS 5 // Max mouse buttons
+MouseClickHandler mouse_handlers[MAX_MOUSE_BUTTONS]; // Array to store handlers for each mouse button
 
 // Scaling booleans
 atomic_bool use_nn = false; // Indicates if nearest neighbor is in use
@@ -393,7 +393,6 @@ void update_image_wrapper(void* arg) {
  * Updates the image which is displayed in the window
  */
 void update_image(PNG_Image* newImage) {
-    //TODO: make sure newImage is a copy
     if (!in_gui_thread()) {
         printf("Address of ptrA: %p\n", (void*)newImage);
     
@@ -413,16 +412,22 @@ void update_image(PNG_Image* newImage) {
             if (image != NULL) { // Check that the existing image exists
                 png_destroy_image(&image); // Destroy the existing image
             }
+            if(background_color != NULL){
+                png_destroy_image(&background_color);
+            }
             // Assume RGBA with 8 bit channel
             image = dequeue ? newImage : png_copy_image(newImage); // Set the image to be equal to the new image
 
             // White background color
-            rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF};
+            background_color = png_create_image(image->width, image->height, 0xFFFFFF);
 
-            // Blend the background of the image to ensure that the image is p
-            blend_with_background(image->data, image->width, image->height, background_color);
+            // Blend the background of the image to ensure that the image is opaque
+            PNG_Image* temp = blend_images(background_color, image, 0, 0);
+            png_destroy_image(&image);
+            image = temp;
         }
-
+        //TODO: there is some interpolation artifacting when the image changes rapidly, fix this
+        //TODO: there is sometimes a leftover piece of the previous image behind the current image
         // Trigger a redraw
         XEvent event;
         memset(&event, 0, sizeof(event));
@@ -430,6 +435,8 @@ void update_image(PNG_Image* newImage) {
         event.xexpose.window = w;
         event.xexpose.count = 0;
         XSendEvent(d, w, False, ExposureMask, &event);
+
+        // Ensure all pending operations are sent to the X server immediately
         XFlush(d);
     }
 }
@@ -650,11 +657,12 @@ void start_window_loop() {
 
     // Load an image into the global variable 'image' from memory
     image = png_load_from_memory(resources_nagato_png, resources_nagato_png_len);
+    background_color = png_create_image(image->width, image->height, 0xFFFFFF);
 
     // Blend the loaded image with a white background
-    rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF}; // White
-    blend_with_background(image->data, image->width, image->height, background_color);
-    
+    PNG_Image* temp = blend_images(background_color, image, 0, 0);
+    png_destroy_image(&image);
+    image = temp;
 
     // Main event loop, continues until 'shutdown_flag' is set
     XEvent event;
@@ -692,8 +700,9 @@ void start_window_loop() {
                 }
 
                 // Scale the image
-                XImage* scaled_image;
+                XImage* scaled_image = NULL;
                 bool set_default_scaling = false;
+
                 if(use_nn){
                     PNG_Image* temp = nearest_neighbor_scale(image, new_width, new_height);
                     scaled_image = png_image_to_ximage(temp);
@@ -741,6 +750,9 @@ void start_window_loop() {
     // Cleanup
     if (image != NULL) {
         png_destroy_image(&image); // Free memory associated with the image
+    }
+    if(background_color != NULL){
+        png_destroy_image(&background_color);
     }
 
     queue_destroy(&queue);

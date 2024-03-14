@@ -11,6 +11,13 @@ typedef struct {
 } memory_reader_state;
 
 /*
+ * Extract color components from RGBA hex code
+ */
+int extract_color_component(uint32_t rgba, int shift) {
+    return (rgba >> shift) & 0xFF;
+}
+
+/*
  * A series of transformations on a PNG image's color and bit depth to standardize its format to RGBA 8 bits
  * Uses libpng to manipulate PNG image data directly
  */
@@ -319,7 +326,25 @@ PNG_Image* png_load_from_file(const char *const filepath) {
 /*
  * Creates and initializes a new PNG_Image structure, allocating memory for both the structure and its associated image data
  */
-PNG_Image* png_create_image(int width, int height) {
+PNG_Image* png_create_image(int width, int height, uint32_t rgba) {
+    if(rgba <= 0xFFFFFF && rgba > 0xFFFFF) {
+        // No alpha given but valid RGB code, assume full opacity
+        rgba = (rgba << 8) | 0xFF;
+    } else if (rgba <= 0xFFFFFFF && rgba > 0xFFFFFF) {
+        // Invalid alpha channel, assume full opacity
+        rgba = (rgba >> 4); // Remove least significant digit
+        rgba = (rgba << 8) | 0xFF; // Add full opacity alpha channel
+    } else if(rgba <= 0xFFFFF) {
+        // Invalid RGBA or RGB code, assume white
+        rgba = 0xFFFFFF;
+    }
+
+    // Verify R, G, and B components are valid; if A is invalid, assume full opacity
+    int red = extract_color_component(rgba, 24);
+    int green = extract_color_component(rgba, 16);
+    int blue = extract_color_component(rgba, 8);
+    int alpha = extract_color_component(rgba, 0); // Extract Alpha; if invalid, will assume full opacity later
+
     // Allocate memory for the PNG_Image struct
     PNG_Image* img = create_empty_png_image_struct();
     if (!img) {
@@ -347,10 +372,10 @@ PNG_Image* png_create_image(int width, int height) {
 
     // Initialize the image data to fully opaque white
     for (size_t i = 0; i < dataSize; i += 4) {
-        img->data[i] = 255; // Red component
-        img->data[i + 1] = 255; // Green component
-        img->data[i + 2] = 255; // Blue component
-        img->data[i + 3] = 255; // Alpha component (fully opaque)
+        img->data[i] = red;
+        img->data[i + 1] = green;
+        img->data[i + 2] = blue;
+        img->data[i + 3] = alpha; // Check if alpha is unspecified or invalid, assume full opacity
     }
 
     // Return the pointer to the newly created PNG_Image structure

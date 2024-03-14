@@ -1,6 +1,7 @@
 #ifndef PNG_IMAGE_H
 #define PNG_IMAGE_H
 
+#include <stdint.h>
 #include <stdlib.h>
 
 // Struct to represent an RGBA image
@@ -23,7 +24,7 @@ PNG_Image* png_load_from_file(const char *const filepath);
 /*
  * Creates and initializes a new PNG_Image structure, allocating memory for both the structure and its associated image data
  */
-PNG_Image* png_create_image(int width, int height);
+PNG_Image* png_create_image(int width, int height, uint32_t rgba);
 
 /*
  * Creates a deep copy of a PNG_Image assuming RGBA format
