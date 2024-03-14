@@ -108,7 +108,7 @@ PNG_Image* create_empty_png_image_struct() {
 /*
  * Loads a PNG image from a memory buffer into a custom PNG_Image structure
  */
-PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
+PNG_Image* png_load_from_memory(const unsigned char *const memory, size_t memory_size) {
     // Create a PNG read structure required for processing PNG data.
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 
@@ -138,8 +138,16 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
         return NULL;
     }
 
+    // Make a copy of the memory parameter to preserve const-ness
+    unsigned char* memory_copy = malloc(memory_size);
+    if (!memory_copy) {
+        // Handle memory allocation failure
+        perror("Failed to allocate memory for data copy");
+        exit(EXIT_FAILURE); //TODO: too sever handle this better
+    }
+
     // Initialize memory_reader_state here to closely align with the XImage version
-    memory_reader_state state = {memory, memory_size, 0};
+    memory_reader_state state = {memcpy(memory_copy, memory, memory_size), memory_size, 0};
 
     // Set the custom read function to use the memory reader state
     png_set_read_fn(png, &state, read_png_data_from_memory_buffer);
@@ -193,6 +201,7 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
 
     // Cleanup
     free(row_pointers); // Free the row pointers array
+    free(memory_copy);
     png_destroy_read_struct(&png, &info, NULL); // Clean up PNG read and info structures
 
     // Return the pointer to the PNG_Image structure containing the loaded image data
@@ -202,7 +211,7 @@ PNG_Image* png_load_from_memory(unsigned char* memory, size_t memory_size) {
 /*
  * Loads a PNG image from a specified file path into a custom PNG_Image structure
  */
-PNG_Image* png_load_from_file(char *filepath) {
+PNG_Image* png_load_from_file(const char *const filepath) {
     // Attempt to open the specified file in read-binary mode
     FILE *fp = fopen(filepath, "rb");
 
@@ -351,7 +360,7 @@ PNG_Image* png_create_image(int width, int height) {
 /*
  * Creates a deep copy of a PNG_Image assuming RGBA format
  */
-PNG_Image* png_copy_image(const PNG_Image* source) {
+PNG_Image* png_copy_image(const PNG_Image *const source) {
     if (source == NULL) return NULL;
 
     // Allocate memory for the copy of the PNG_Image structure
