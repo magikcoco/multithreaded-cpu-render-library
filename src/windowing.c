@@ -56,6 +56,7 @@ atomic_int global_mouse_y = ATOMIC_VAR_INIT(0);
 pthread_t thread_id; // Thread id for the GUI thread
 TaskQueue queue; // Task queue for when functions are called outside the GUI thread
 _Thread_local int is_gui_thread = 0; // 1 if GUI thread, 0 otherwise
+bool dequeue = false;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////// HELPER FUNCTIONS ///////////////////////////////////////////////////////////////
@@ -90,7 +91,9 @@ void process_gui_tasks() {
     void (*function)(void*);
     void* arg;
     while (queue_dequeue(&queue, &function, &arg)) {
+        dequeue = true;
         function(arg); // Execute the dequeued task
+        dequeue = false;
     }
 }
 
@@ -401,7 +404,7 @@ void update_image(PNG_Image* newImage) {
             return;
         }
         // Assume RGBA with 8 bit channel
-        args->image = newImage;
+        args->image = png_copy_image(newImage);
 
         queue_enqueue(&queue, update_image_wrapper, args);
     } else {
@@ -410,9 +413,8 @@ void update_image(PNG_Image* newImage) {
             if (image != NULL) { // Check that the existing image exists
                 png_destroy_image(&image); // Destroy the existing image
             }
-
             // Assume RGBA with 8 bit channel
-            image = png_copy_image(newImage); // Set the image to be equal to the new image
+            image = dequeue ? newImage : png_copy_image(newImage); // Set the image to be equal to the new image
 
             // White background color
             rgba_color background_color = {0xFF, 0xFF, 0xFF, 0xFF};
@@ -658,8 +660,8 @@ void start_window_loop() {
     XEvent event;
     while (!atomic_load(&shutdown_flag)) {
         // Tasks to perform each loop
-        process_gui_tasks();
         update_global_mouse_position();
+        process_gui_tasks();
 
         // Get the next event
         XNextEvent(d, &event);
