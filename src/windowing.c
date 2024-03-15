@@ -394,8 +394,6 @@ void update_image_wrapper(void* arg) {
  */
 void update_image(PNG_Image* newImage) {
     if (!in_gui_thread()) {
-        printf("Address of ptrA: %p\n", (void*)newImage);
-    
         // Not in the correct thread, enqueue the task
         UpdateImageArgs* args = malloc(sizeof(UpdateImageArgs));
         if (args == NULL) {
@@ -672,77 +670,79 @@ void start_window_loop() {
         process_gui_tasks();
 
         // Get the next event
-        XNextEvent(d, &event);
+        if(XPending(d) > 0) {
+            XNextEvent(d, &event);
 
-        // If a window close event is received, initiate application shutdown
-        if (event.type == ClientMessage && (Atom)event.xclient.data.l[0] == wmDelete) {
-            shutdown();
-        } else if (event.type == Expose) {
-            // On an expose event, redraw the image
-            if (image != NULL) {
-                // Dynamically calculate the new size
-                get_window_size(d, w, &width, &height);
+            // If a window close event is received, initiate application shutdown
+            if (event.type == ClientMessage && (Atom)event.xclient.data.l[0] == wmDelete) {
+                shutdown();
+            } else if (event.type == Expose) {
+                // On an expose event, redraw the image
+                if (image != NULL) {
+                    // Dynamically calculate the new size
+                    get_window_size(d, w, &width, &height);
 
-                // Determine the aspect ratios to decide how to scale the image
-                double img_aspect = (double)image->width / image->height;
-                double win_aspect = (double)width / height;
-                int new_width, new_height;
+                    // Determine the aspect ratios to decide how to scale the image
+                    double img_aspect = (double)image->width / image->height;
+                    double win_aspect = (double)width / height;
+                    int new_width, new_height;
 
-                // Scale the image based on the aspect ratio comparison
-                if (img_aspect > win_aspect) {
-                    // Scale based on window width
-                    new_width = width;
-                    new_height = (int)(width / img_aspect);
-                } else {
-                    // Scale based on window height
-                    new_height = height;
-                    new_width = (int)(height * img_aspect);
+                    // Scale the image based on the aspect ratio comparison
+                    if (img_aspect > win_aspect) {
+                        // Scale based on window width
+                        new_width = width;
+                        new_height = (int)(width / img_aspect);
+                    } else {
+                        // Scale based on window height
+                        new_height = height;
+                        new_width = (int)(height * img_aspect);
+                    }
+
+                    // Scale the image
+                    XImage* scaled_image = NULL;
+                    bool set_default_scaling = false;
+
+                    if(use_nn){
+                        PNG_Image* temp = nearest_neighbor_scale(image, new_width, new_height);
+                        scaled_image = png_image_to_ximage(temp);
+                        png_destroy_image(&temp);
+                    } else if(use_bli){
+                        PNG_Image* temp = bilinear_interpolation_scale(image, new_width, new_height);
+                        scaled_image = png_image_to_ximage(temp);
+                        png_destroy_image(&temp);
+                    } else {
+                        perror("No scaling method set");
+                        set_default_scaling = true;
+                        PNG_Image* temp = bilinear_interpolation_scale(image, new_width, new_height);
+                        scaled_image = png_image_to_ximage(temp);
+                        png_destroy_image(&temp);
+                    }
+
+                    // This must be here or there will be a deadlock with aquiring the scaling lock
+                    if(set_default_scaling) {
+                        set_scaling_bli(); // Fallback to bilinear interpolation if no scaling method was set
+                    }
+
+                    // Calculate the position to center the image
+                    int x_pos = (width - scaled_image->width) / 2;
+                    int y_pos = (height - scaled_image->height) / 2;
+
+                    // Display the scaled image in the window
+                    XPutImage(d, w, DefaultGC(d, 0), scaled_image, 0, 0, x_pos, y_pos, scaled_image->width, scaled_image->height);
+
+                    // Free resources associated with the scaled XImage
+                    XDestroyImage(scaled_image);
                 }
-
-                // Scale the image
-                XImage* scaled_image = NULL;
-                bool set_default_scaling = false;
-
-                if(use_nn){
-                    PNG_Image* temp = nearest_neighbor_scale(image, new_width, new_height);
-                    scaled_image = png_image_to_ximage(temp);
-                    png_destroy_image(&temp);
-                } else if(use_bli){
-                    PNG_Image* temp = bilinear_interpolation_scale(image, new_width, new_height);
-                    scaled_image = png_image_to_ximage(temp);
-                    png_destroy_image(&temp);
-                } else {
-                    perror("No scaling method set");
-                    set_default_scaling = true;
-                    PNG_Image* temp = bilinear_interpolation_scale(image, new_width, new_height);
-                    scaled_image = png_image_to_ximage(temp);
-                    png_destroy_image(&temp);
+            } else if (event.type == KeyPress) {
+                KeySym key = XLookupKeysym(&event.xkey, 0);
+                KeyCode key_code = XKeysymToKeycode(d, key);
+                if (key_code < MAX_KEYS && key_handlers[key_code]) {
+                    key_handlers[key_code](); // Execute the key handler if one is set
                 }
-
-                // This must be here or there will be a deadlock with aquiring the scaling lock
-                if(set_default_scaling) {
-                    set_scaling_bli(); // Fallback to bilinear interpolation if no scaling method was set
+            } else if (event.type == ButtonPress) {
+                if (event.xbutton.button-1 < MAX_KEYS && mouse_handlers[event.xbutton.button-1]) {
+                    mouse_handlers[event.xbutton.button-1](); // Execute the mouse button handler if one is set
                 }
-
-                // Calculate the position to center the image
-                int x_pos = (width - scaled_image->width) / 2;
-                int y_pos = (height - scaled_image->height) / 2;
-
-                // Display the scaled image in the window
-                XPutImage(d, w, DefaultGC(d, 0), scaled_image, 0, 0, x_pos, y_pos, scaled_image->width, scaled_image->height);
-
-                // Free resources associated with the scaled XImage
-                XDestroyImage(scaled_image);
-            }
-        } else if (event.type == KeyPress) {
-            KeySym key = XLookupKeysym(&event.xkey, 0);
-            KeyCode key_code = XKeysymToKeycode(d, key);
-            if (key_code < MAX_KEYS && key_handlers[key_code]) {
-                key_handlers[key_code](); // Execute the key handler if one is set
-            }
-        } else if (event.type == ButtonPress) {
-            if (event.xbutton.button-1 < MAX_KEYS && mouse_handlers[event.xbutton.button-1]) {
-                mouse_handlers[event.xbutton.button-1](); // Execute the mouse button handler if one is set
             }
         }
     }
