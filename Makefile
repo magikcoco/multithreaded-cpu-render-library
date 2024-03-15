@@ -1,7 +1,7 @@
 CC=gcc
 # Include the AddressSanitizer flag in both CFLAGS and LDFLAGS for memory leak detection.
-CFLAGS=-I./include -I/usr/include/X11 -L/usr/lib/X11 -Wall -Wunused -fsanitize=address
-LDFLAGS=-lX11 -lpng -lm -fsanitize=address
+CFLAGS=-I./include -I/usr/include/X11 -L/usr/lib/X11 -Wall -Wunused -fsanitize=address -g
+LDFLAGS=-lX11 -lpng -lm -fsanitize=address -g
 SRCDIR=src
 BUILDDIR=build
 LIB_TARGET=$(BUILDDIR)/libnagato.a  # Static library
