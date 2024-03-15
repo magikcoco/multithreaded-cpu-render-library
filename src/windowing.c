@@ -66,7 +66,7 @@ bool dequeue = false;
  * handles what to do when SIGTERM is received
  */
 void termination_handler(){
-    atomic_store(&shutdown_flag, true);
+    atomic_store(&shutdown_flag, true); // TODO: this is often very slow, faster alternative?
 }
 
 /*
@@ -392,7 +392,7 @@ void update_image_wrapper(void* arg) {
 /*
  * Updates the image which is displayed in the window
  */
-void update_image(PNG_Image* newImage) {
+void update_image(PNG_Image* new_image) {
     if (!in_gui_thread()) {
         // Not in the correct thread, enqueue the task
         UpdateImageArgs* args = malloc(sizeof(UpdateImageArgs));
@@ -401,20 +401,30 @@ void update_image(PNG_Image* newImage) {
             return;
         }
         // Assume RGBA with 8 bit channel
-        args->image = png_copy_image(newImage);
+        args->image = png_copy_image(new_image);
 
         queue_enqueue(&queue, update_image_wrapper, args);
     } else {
         // In the correct thread, execute the update logic directly
-        if (newImage != NULL) { // Check that the given image exists
+        if (new_image != NULL) { // Check that the given image exists
             if (image != NULL) { // Check that the existing image exists
+                // Need to compare the aspect ratio of the new image and the old image
+                // If the new image has an aspect ratio which is different from the old image
+                // Clearing the screen is necessary
+                float old_aspect_ratio = (float) image->width / image->height;
+                float new_aspect_ratio = (float) new_image->width / new_image->height;
+
+                if(new_aspect_ratio > old_aspect_ratio) { // TODO: replace this with a priority system for ConfigureNotify events
+                    XClearWindow(d, w); // This will be batched with the later update
+                }
+
                 png_destroy_image(&image); // Destroy the existing image
             }
             if(background_color != NULL){
                 png_destroy_image(&background_color);
             }
             // Assume RGBA with 8 bit channel
-            image = dequeue ? newImage : png_copy_image(newImage); // Set the image to be equal to the new image
+            image = dequeue ? new_image : png_copy_image(new_image); // Set the image to be equal to the new image
 
             // White background color
             background_color = png_create_image(image->width, image->height, 0xFFFFFF);
@@ -424,8 +434,6 @@ void update_image(PNG_Image* newImage) {
             png_destroy_image(&image);
             image = temp;
         }
-        //TODO: there is some interpolation artifacting when the image changes rapidly, fix this
-        //TODO: there is sometimes a leftover piece of the previous image behind the current image
         // Trigger a redraw
         XEvent event;
         memset(&event, 0, sizeof(event));
@@ -518,10 +526,7 @@ void handle_key_event(KeyHandler handler, KeySym key) {
         
         KeyCode key_code = XKeysymToKeycode(d, key);
 
-        if (key_code < MAX_KEYS) {
-            // Directly attach the handler to the given key, assuming this executes on the GUI thread
-            key_handlers[key_code] = handler;
-        }
+        key_handlers[key_code] = handler;
     }
 }
 
@@ -564,10 +569,7 @@ void remove_key_handler(KeySym key) {
         
         KeyCode key_code = XKeysymToKeycode(d, key);
 
-        if (key_code < MAX_KEYS) {
-            // Directly set the handler for the given key to NULL
-            key_handlers[key_code] = NULL;
-        }
+        key_handlers[key_code] = NULL;
     }
 }
 
@@ -647,7 +649,7 @@ void start_window_loop() {
     // Make the window visible on the screen
     XMapWindow(d, w); // Maps the window on the screen
     // Register interest in certain types of events, including key presses
-    XSelectInput(d, w, ExposureMask | StructureNotifyMask | KeyPressMask | ButtonPressMask);
+    XSelectInput(d, w, ExposureMask | StructureNotifyMask | KeyPressMask | ButtonPressMask | ConfigureNotify);
 
     // Setup to handle window close events
     Atom wmDelete = XInternAtom(d, "WM_DELETE_WINDOW", True);
@@ -736,13 +738,16 @@ void start_window_loop() {
             } else if (event.type == KeyPress) {
                 KeySym key = XLookupKeysym(&event.xkey, 0);
                 KeyCode key_code = XKeysymToKeycode(d, key);
-                if (key_code < MAX_KEYS && key_handlers[key_code]) {
+                if (key_handlers[key_code]) {
                     key_handlers[key_code](); // Execute the key handler if one is set
                 }
             } else if (event.type == ButtonPress) {
-                if (event.xbutton.button-1 < MAX_KEYS && mouse_handlers[event.xbutton.button-1]) {
+                if (event.xbutton.button-1 < MAX_MOUSE_BUTTONS && mouse_handlers[event.xbutton.button-1]) {
                     mouse_handlers[event.xbutton.button-1](); // Execute the mouse button handler if one is set
                 }
+            } else if (event.type == ConfigureNotify) {
+                printf("ConfigureNotify\n");
+                //TODO: there is sometimes a leftover piece of the previous image behind the current image when the window is resized
             }
         }
     }
