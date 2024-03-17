@@ -434,6 +434,7 @@ void update_image(PNG_Image* new_image) {
             png_destroy_image(&image);
             image = temp;
         }
+        
         // Trigger a redraw
         XEvent event;
         memset(&event, 0, sizeof(event));
@@ -671,6 +672,13 @@ void start_window_loop() {
         update_global_mouse_position();
         process_gui_tasks();
 
+        //TODO: Too many events at once, need to split them up into different threads and handle them concurrently
+        // A thread for key event handling, a thread for expose events, a thread for configure notify events
+        XSync(d, false);
+        //TODO: Implement MIT_SHM Extension for shared memory usage
+        //TODO: Implement double buffering to reduce flicker
+        //TODO: Implement damage tracking to minimize data sent to X server with X Damage extension
+
         // Get the next event
         if(XPending(d) > 0) {
             XNextEvent(d, &event);
@@ -746,7 +754,6 @@ void start_window_loop() {
                     mouse_handlers[event.xbutton.button-1](); // Execute the mouse button handler if one is set
                 }
             } else if (event.type == ConfigureNotify) {
-                printf("ConfigureNotify\n");
                 //TODO: there is sometimes a leftover piece of the previous image behind the current image when the window is resized
             }
         }
