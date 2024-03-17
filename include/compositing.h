@@ -5,26 +5,36 @@
 #include <pthread.h>
 #include "png_image.h"
 
-typedef struct {
-    png_byte red, green, blue, alpha;
-} rgba_color;
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////// IMAGE FLATTENING ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//TODO: function to flatten all queued iamges into a single image
+/*
+ * Mark the given image to be rendered in a single flat image, obtained by calling get_flattened_image().
+ * Images pushed sooner will overlap with and draw on top of images pushed later.
+ * Images are rendered at the given X & Y coordinates, where the top left corner is (0, 0). X increases going right and Y increases going down.
+ * The last image to be pushed is used as the background, and pixels that fall outside of it's boundaries will be discarded.
+ * Images pushed in this way are not deallocated.
+ */
+void push_image_raw(const PNG_Image *const image, int x, int y);
 
-void destroy_image_stack();
-void clear_image_stack();
+/*
+ * Flattens all the images pushed prior to calling this function into a single image and resets the stack.
+ * Any PNG_Images not pushed with push_image_raw will be deallocated when you call this function.
+ * Returns a pointer to a newly created PNG_Image which is the result of layer all the pushed images on top of each other.
+ * The first image to be pushed will be the topmost layer, and the last image to be pushed will be the background layer.
+ */
+PNG_Image* get_flattened_image();
 
-// Image flattening
-void push_image(PNG_Image* image, int x, int y);
-PNG_Image* flatten_stack_into_image();
-
-// Other image manipulation
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////// IMAGE MANIPULATION ///////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * Blends an image with a specified background color by modifying the image's pixel data in place
  * Assumes pixels are represented as four consecutive bytes (RGBA: Red, Green, Blue, Alpha) in a flat array
  * Sets the opacity to full for every pixel
  */
-void blend_with_background(png_bytep img_data, int width, int height, rgba_color background_color);
+PNG_Image* blend_images(const PNG_Image* const canvas, const PNG_Image* const image, int startX, int startY);
 
 #endif
