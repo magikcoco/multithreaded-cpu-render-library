@@ -7,14 +7,14 @@
 #define TaskID uuid_t*
 
 typedef struct Task {
-    void (*function)(void*);
+    void* (*function)(void*);
     void* arg;
     struct Task* next;
 } Task; // A task to be placed in the queue
 
 typedef struct TaskWithID {
     TaskID id;
-    void (*function)(void*);
+    void* (*function)(void*);
     void* arg;
     struct TaskWithID* next;
 } TaskWithID;
@@ -35,24 +35,24 @@ typedef struct {
 /*
  * Queues up a task to be completed
  */
-void queue_enqueue(TaskQueue* queue, void (*function)(void*), void* arg);
+void queue_enqueue(TaskQueue* queue, void* (*function)(void*), void* arg);
 
 /*
  * Queues up a task to be completed with a unique id included
  */
-void queue_enqueue_with_id(TaskQueueWithID* queue, void (*function)(void*), void* arg, TaskID id);
+void queue_enqueue_with_id(TaskQueueWithID* queue, void* (*function)(void*), void* arg, TaskID id);
 
 /*
  * Modifies the given pointers to reflect the next task in the queue and then advances the queue
  * Returns 0 if the queue is empty, or 1 if there is a task to complete
  */
-int queue_dequeue(TaskQueue* queue, void (**function)(void*), void** arg);
+int queue_dequeue(TaskQueue* queue, void* (**function)(void*), void** arg);
 
 /*
  * Modifies the given pointers to reflect the next task in the queue and then advances the queue
  * If the queue is empty, it waits until there is work to do
  */
-void queue_dequeue_with_id(TaskQueueWithID* queue, void (**function)(void*), void** arg, TaskID id);
+void queue_dequeue_with_id(TaskQueueWithID* queue, void* (**function)(void*), void** arg, TaskID id);
 
 /*
  * Initialize the queue

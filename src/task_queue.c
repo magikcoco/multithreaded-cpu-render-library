@@ -5,7 +5,7 @@
 /*
  * Queues up a task to be completed
  */
-void queue_enqueue(TaskQueue* queue, void (*function)(void*), void* arg) {
+void queue_enqueue(TaskQueue* queue, void* (*function)(void*), void* arg) {
     // Create a task
     Task* task = malloc(sizeof(Task));
 
@@ -38,7 +38,7 @@ void queue_enqueue(TaskQueue* queue, void (*function)(void*), void* arg) {
     pthread_mutex_unlock(&queue->lock);
 }
 
-void queue_enqueue_with_id(TaskQueueWithID* queue, void (*function)(void*), void* arg, TaskID id){
+void queue_enqueue_with_id(TaskQueueWithID* queue, void* (*function)(void*), void* arg, TaskID id){
     // Create a task
     TaskWithID* task = malloc(sizeof(Task));
 
@@ -77,7 +77,7 @@ void queue_enqueue_with_id(TaskQueueWithID* queue, void (*function)(void*), void
  * Executes a single queued task, then destroys the task and advances the queue
  * Returns 0 if the queue is empty, or 1 if there is a task to complete
  */
-int queue_dequeue(TaskQueue* queue, void (**function)(void*), void** arg) {
+int queue_dequeue(TaskQueue* queue, void* (**function)(void*), void** arg) {
     // Acquire the queue
     pthread_mutex_lock(&queue->lock);
 
@@ -111,7 +111,7 @@ int queue_dequeue(TaskQueue* queue, void (**function)(void*), void** arg) {
  * Executes a single queued task, then destroys the task and advances the queue
  * Returns 0 if the queue is empty, or 1 if there is a task to complete
  */
-void queue_dequeue_with_id(TaskQueueWithID* queue, void (**function)(void*), void** arg, TaskID id) {
+void queue_dequeue_with_id(TaskQueueWithID* queue, void* (**function)(void*), void** arg, TaskID id) {
     // Acquire the queue lock
     pthread_mutex_lock(&queue->lock);
 
