@@ -168,7 +168,7 @@ void queue_init_with_id(TaskQueueWithID* queue) {
  * Destroys the queue. No remaining tasks are executed.
  */
 void queue_destroy(TaskQueue* queue) {
-    void (*function)(void*); // Function pointer
+    void* (*function)(void*); // Function pointer
     void* arg; // Argument pointer
 
     while (queue_dequeue(queue, &function, &arg)) { // Breaks loop when queue is empty
