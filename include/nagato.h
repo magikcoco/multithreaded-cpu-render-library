@@ -7,6 +7,7 @@
 #include "logo.h"
 #include "png_image.h"
 #include "scaling.h"
+#include "thread_manager.h"
 #include "timing.h"
 #include "windowing.h"
 
