@@ -2,7 +2,7 @@
 #define FUNCTION_MAPPING_H
 
 // Function pointer type definition for generic functions
-typedef void (*FunctionPointer)(void *);
+typedef void* (*FunctionPointer)(void *);
 
 typedef struct {
     FunctionPointer ptr;
