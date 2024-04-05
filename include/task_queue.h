@@ -4,7 +4,7 @@
 #include <pthread.h>
 #include <uuid/uuid.h>
 
-#define TaskID uuid_t*
+#define TaskID uuid_t //TODO: make this not a pointer
 
 typedef struct Task {
     void* (*function)(void*);
@@ -52,7 +52,7 @@ int queue_dequeue(TaskQueue* queue, void* (**function)(void*), void** arg);
  * Modifies the given pointers to reflect the next task in the queue and then advances the queue
  * If the queue is empty, it waits until there is work to do
  */
-void queue_dequeue_with_id(TaskQueueWithID* queue, void* (**function)(void*), void** arg, TaskID id);
+void queue_dequeue_with_id(TaskQueueWithID* queue, void* (**function)(void*), void** arg, TaskID* id);
 
 /*
  * Initialize the queue
