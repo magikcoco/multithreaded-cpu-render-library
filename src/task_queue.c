@@ -1,6 +1,7 @@
 #include "task_queue.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /*
  * Queues up a task to be completed
@@ -39,20 +40,27 @@ void queue_enqueue(TaskQueue* queue, void* (*function)(void*), void* arg) {
 }
 
 void queue_enqueue_with_id(TaskQueueWithID* queue, void* (*function)(void*), void* arg, TaskID id){
+    // Check null
+    if(!id){
+        perror("task id cannot be null for enquing a task");
+        return;
+    }
+
     // Create a task
-    TaskWithID* task = malloc(sizeof(Task));
+    TaskWithID* task = malloc(sizeof(TaskWithID));
 
     // Check for failure
-    if (task == NULL) {
-        // TODO: Handle error
+    if (!task) {
+        perror("failed to allocate memory for task");
         return;
     }
 
     // Initialize the task
+    task->next = NULL; // Heap buffer overflow
     task->function = function;
     task->arg = arg;
-    task->next = NULL;
-    uuid_copy(*task->id, *id);
+    
+    uuid_copy(task->id, id);
 
     // Lock the queue through its mutex
     pthread_mutex_lock(&queue->lock);
@@ -111,7 +119,7 @@ int queue_dequeue(TaskQueue* queue, void* (**function)(void*), void** arg) {
  * Executes a single queued task, then destroys the task and advances the queue
  * Returns 0 if the queue is empty, or 1 if there is a task to complete
  */
-void queue_dequeue_with_id(TaskQueueWithID* queue, void* (**function)(void*), void** arg, TaskID id) {
+void queue_dequeue_with_id(TaskQueueWithID* queue, void* (**function)(void*), void** arg, TaskID* id) {
     // Acquire the queue lock
     pthread_mutex_lock(&queue->lock);
 
@@ -125,12 +133,9 @@ void queue_dequeue_with_id(TaskQueueWithID* queue, void* (**function)(void*), vo
     *function = task->function;
     *arg = task->arg;
 
-    if (!task->id) {
-        perror("Failed to allocate memory for TaskID");
-        free(task); // Ensure previously allocated memory is freed to avoid leaks
-        return;
-    }
-    uuid_copy(*id, *task->id); //FIXME: id must be check and allocated if it doesnt exist
+    uuid_copy(*id, task->id);
+
+    memset(&task->id, 0, sizeof(uuid_t)); // Zeroes out the UUID
 
     // Advance the queue
     queue->head = task->next;
