@@ -30,11 +30,14 @@ typedef struct ThreadPool {
 atomic_bool shutdown_flag = ATOMIC_VAR_INIT(false); // When true triggers shutdown of application
 ThreadPool* thread_pool = NULL; // The thread pool for cpu intensive tasks
 pthread_mutex_t init_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex for the initialization of the cpu thread pool
-atomic_bool init_flag = ATOMIC_VAR_INIT(false); // Flag for the initialization of the cpu thread pool
+atomic_bool init_flag = ATOMIC_VAR_INIT(true); // Flag for the initialization of the cpu thread pool
 CondIDPair* hashmap = NULL; // Global hashmap for storing CondIDPair structures across both thread pools
 pthread_mutex_t hashmap_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex for locking access to the hashmap
-_Thread_local int worker_thread_number = 0;
-atomic_int thread_counter = ATOMIC_VAR_INIT(1);
+_Thread_local int worker_thread_number = 0; // Used to id threads, for logging purposes
+atomic_int thread_counter = ATOMIC_VAR_INIT(1); // Counts up for each thread
+int sub_task_counter = 0; // Easier to use a mutex than an atomic int here
+pthread_mutex_t sub_task_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex for locking the sub task counter
+int max_sub_tasks;
 
 /*
  * Calculates and returns the number of cores available on the system
@@ -45,7 +48,14 @@ int calc_core_count() {
     int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
     if (num_cores < 1) {
         perror("Couldn't detect available cores, defaulting to 4 threads\n");
+        max_sub_tasks = 1;
         return 4; // Default if unable to determine
+    } else if (num_cores < 4 && num_cores > 1) {
+        max_sub_tasks = 1;
+    } else if (num_cores == 1) {
+        max_sub_tasks = 0; // Must be zero or there will be deadlock later
+    } else {
+        max_sub_tasks = num_cores/4;
     }
     printf("cpu cores available: %d\n", num_cores);
     return num_cores;
@@ -55,12 +65,19 @@ int calc_core_count() {
  * Find a condition variable by the uuid, and remove it from the hashmap after retreival
  */
 CondIDPair* find_cond_id_pair(TaskID task_id) {
-    CondIDPair* pair;
+    printf("Worker thread %d: searching for condition/id pair\n", worker_thread_number);
+    CondIDPair* pair = NULL;
     pthread_mutex_lock(&hashmap_mutex); // Lock the hashmap
-    HASH_FIND_PTR(hashmap, &task_id, pair); // Retrieve based on TaskID
+    HASH_FIND_PTR(hashmap, task_id, pair); // Retrieve based on TaskID
+    pthread_mutex_unlock(&hashmap_mutex);
+    printf("Worker thread %d: found condition/id pair\n", worker_thread_number);
+    return pair; // NULL if not found
+}
+
+void remove_cond_id_pair(CondIDPair* pair){
+    pthread_mutex_lock(&hashmap_mutex); // Lock the hashmap
     HASH_DEL(hashmap, pair);
     pthread_mutex_unlock(&hashmap_mutex);
-    return pair; // NULL if not found
 }
 
 /*
@@ -76,10 +93,7 @@ void remove_and_destroy_cond_id_pair(CondIDPair** pair_ptr) {
     pthread_cond_destroy(&pair->task_complete); // Destroy the condition variable and mutex
     pthread_mutex_destroy(&pair->mutex);
 
-    if(pair->task_id){ // Check that the task id exists first
-        free(pair->task_id); // Free it
-        pair->task_id = NULL; // Dangling pointer
-    }
+    memset(&pair->task_id, 0, sizeof(uuid_t)); // Zeroes out the UUID
 
     free(pair); // Free the pointer itself
     *pair_ptr = NULL; // Dangling pointer
@@ -90,9 +104,9 @@ void remove_and_destroy_cond_id_pair(CondIDPair** pair_ptr) {
  */
 void* worker_function(void *arg) {
     ThreadPool *pool = (ThreadPool*) arg;
-    void (*task_function)(void*); // Function pointer modified by dequeue function
+    void* (*task_function)(void*); // Function pointer modified by dequeue function
     void* task_arg; // Argument pointer modified by queue function
-    TaskID id = NULL;
+    TaskID id;
 
     // For logging purposes, set up thread IDs
     worker_thread_number = atomic_fetch_add(&thread_counter, 1);
@@ -103,9 +117,10 @@ void* worker_function(void *arg) {
         printf("Worker thread %d: dequeueing task\n", worker_thread_number);
 
         // This function will sleep until something enters the queue
-        queue_dequeue_with_id(&pool->task_queue, &task_function, &task_arg, id); // Gets the task and the id
+        queue_dequeue_with_id(&pool->task_queue, &task_function, &task_arg, &id); // Gets the task and the id
 
-        printf("Worker thread %d: received \"%s\"\n", worker_thread_number, get_function_name(task_function));
+        //printf("Worker thread %d: received \"%s\"\n", worker_thread_number, get_function_name(task_function));
+        printf("Worker thread %d: received a task\n", worker_thread_number); //TODO: make the above work instead
 
         task_function(task_arg); // Execute the task
 
@@ -113,13 +128,15 @@ void* worker_function(void *arg) {
 
         CondIDPair* pair = find_cond_id_pair(id);
         if(pair){
+            printf("Worker thread %d: processing pair\n", worker_thread_number);
             pthread_mutex_lock(&pair->mutex);
             pthread_cond_signal(&pair->task_complete);
             pthread_mutex_unlock(&pair->mutex);
+            remove_cond_id_pair(pair);
             remove_and_destroy_cond_id_pair(&pair);
-            printf("Worker thread %d: signalled task complete\n", worker_thread_number);
+            printf("Worker thread %d: signaled task complete\n", worker_thread_number);
         } else { // The pair is null so the wait thread should still see the task completed in this case
-            printf("Worker thread %d: failed to find uuid for finished in hashmap\n", worker_thread_number);
+            printf("Worker thread %d: failed to find uuid for finished task in hashmap\n", worker_thread_number);
         }
     }
 
@@ -133,13 +150,13 @@ void* worker_function(void *arg) {
  */
 void initialize_thread_pool() {
     // If the CPU thread pool already exists, don't reinitialize it
-    if(thread_pool || atomic_load(&init_flag)) {
+    if(thread_pool || !atomic_load(&init_flag)) {
         perror("initialization of already initialized thread pool");
         return;
     }
 
     // Flip the flag
-    atomic_store(&init_flag, true);
+    atomic_store(&init_flag, false);
 
     // Get the core count
     int cores = calc_core_count();
@@ -167,7 +184,8 @@ void initialize_thread_pool() {
 
     // Initialize workers
     for (int i = 0; i < cores; i++) {
-        if (!pthread_create(&thread_pool->worker_threads[i], NULL, worker_function, (void*)thread_pool)) {
+        int result = pthread_create(&thread_pool->worker_threads[i], NULL, worker_function, (void*)thread_pool);
+        if (result) { // result is 0 on success
             perror("failed to create worker thread in cpu worker pool");
             free(thread_pool->worker_threads);
             free(thread_pool);
@@ -186,14 +204,8 @@ void add_id_cond_pair(TaskID id){
         return;
     }
 
-    pair->task_id = malloc(sizeof(uuid_t)); // Dynamically allocate the memory
-    if(!pair->task_id){ // Handle allocation failure
-        perror("failed to allocate for id in new condition/id pair");
-        free(pair);
-        return;
-    }
     // Copy the uuid into the structure
-    uuid_copy(*(pair->task_id), *id);
+    uuid_copy(pair->task_id, id);
 
     // Initial condition variable and mutex
     pthread_cond_init(&pair->task_complete, NULL);
@@ -208,7 +220,53 @@ void add_id_cond_pair(TaskID id){
 /*
  * Add a task to the cpu thread pool
  */
-TaskID submit_task(PoolTask* task) {
+TaskID* submit_task(PoolTask* task) {
+    // Lazy initialization
+    if(atomic_load(&init_flag)){
+        printf("here\n");
+        pthread_mutex_lock(&init_mutex);
+        if(!thread_pool){
+            initialize_thread_pool();
+        }
+        pthread_mutex_unlock(&init_mutex);
+    }
+
+    // Lock the thread pool
+    pthread_mutex_lock(&thread_pool->lock);
+
+    TaskID* id = malloc(sizeof(uuid_t));
+    if(!id){
+        perror("allocating id failed");
+        return NULL;
+    }
+    uuid_generate(*id); // uuid_t*
+
+    add_id_cond_pair(*id);
+
+    // Create a special id to identify the task later
+    queue_enqueue_with_id(&thread_pool->task_queue, task->function, task->arg, *id);
+
+    // Unlock the thread pool
+    pthread_mutex_unlock(&thread_pool->lock);
+
+    return id;
+}
+
+/*
+ * Add a task to the cpu thread pool which submits subtasks. Use this to prevent deadlocking.
+ * If there are too many subtasks spawning tasks, the task ID will return null and no task will be submitted.
+ */
+TaskID* submit_task_with_subtask(PoolTask* task) {
+    // Check if cap is reached
+    pthread_mutex_lock(&sub_task_mutex);
+    if(sub_task_counter < max_sub_tasks){
+        sub_task_counter++;
+        pthread_mutex_unlock(&sub_task_mutex);
+    } else {
+        pthread_mutex_unlock(&sub_task_mutex);
+        return NULL;
+    }
+
     // Lazy initialization
     if(atomic_load(&init_flag)){
         pthread_mutex_lock(&init_mutex);
@@ -221,13 +279,13 @@ TaskID submit_task(PoolTask* task) {
     // Lock the thread pool
     pthread_mutex_lock(&thread_pool->lock);
 
-    TaskID id = NULL;
-    uuid_generate(*id); // TaskID is a uuid_t*
+    TaskID* id = NULL;
+    uuid_generate(*id); // uuid_t*
 
-    add_id_cond_pair(id);
+    add_id_cond_pair(*id);
 
     // Create a special id to identify the task later
-    queue_enqueue_with_id(&thread_pool->task_queue, task->function, task->arg, id);
+    queue_enqueue_with_id(&thread_pool->task_queue, task->function, task->arg, *id);
 
     // Unlock the thread pool
     pthread_mutex_unlock(&thread_pool->lock);
@@ -236,9 +294,10 @@ TaskID submit_task(PoolTask* task) {
 }
 
 /*
- * Waits for a condition signal if the given TaskID doesnt come up null in the hasmap
+ * Waits for a condition signal if the given TaskID doesnt come up null in the hashmap
  */
 void wait_for_task_completion(TaskID id){
+    if(!id) return; // If its null it's faster to return now
     CondIDPair* pair;
     pthread_mutex_lock(&hashmap_mutex);
     HASH_FIND_PTR(hashmap, &id, pair); // Returns null if not found
@@ -249,9 +308,28 @@ void wait_for_task_completion(TaskID id){
 }
 
 /*
+ * Waits for a condition signal if the given TaskID doesnt come up null in the hashmap
+ * Paired with subtask spawning tasks
+ */
+void wait_for_task_with_subtask_completion(TaskID id){
+    if(!id) return; // If its null it's faster to return now
+    CondIDPair* pair;
+    pthread_mutex_lock(&hashmap_mutex);
+    HASH_FIND_PTR(hashmap, &id, pair); // Returns null if not found
+    pthread_mutex_unlock(&hashmap_mutex);
+    while(!pair) {
+        pthread_cond_wait(&pair->task_complete, &pair->mutex);
+    }
+    pthread_mutex_lock(&sub_task_mutex);
+    sub_task_counter--; // This part is why this function exists
+    pthread_mutex_unlock(&sub_task_mutex);
+}
+
+/*
  * Flips the shutdown flag to true
  */
 void signal_shutdown(){
+    printf("Worker thread %d: signal shutdown of application\n", worker_thread_number);
     atomic_store(&shutdown_flag, true);
 }
 
